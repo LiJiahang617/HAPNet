@@ -12,7 +12,7 @@ from mmengine_custom.runner import Runner
 from mmseg_custom.registry import RUNNERS
 
 
-roadformer_path = "/home/ljh/Desktop/TIV/Workspace/RoadFormer"
+roadformer_path = "/home/ljh/Desktop/TIV/TIV"
 sys.path.insert(0, roadformer_path)
 sys.path = [p for p in sys.path if "mmsegmentation" not in p]
 
