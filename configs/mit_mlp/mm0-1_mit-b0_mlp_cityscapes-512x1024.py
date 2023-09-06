@@ -2,7 +2,7 @@ _base_ = [
 '../_base_/datasets/mmcityscapes_1024x512.py'
 ]
 
-pretrained = '/home/ljh/Desktop/TIV/Workspace/RoadFormer/pretrain/mit_b0_20220624-7e0fe6dd.pth'
+pretrained = 'https://download.openmmlab.com/mmsegmentation/v0.5/pretrain/segformer/mit_b0_20220624-7e0fe6dd.pth'
 
 crop_size = (512, 1024) # h, w
 # model settings
@@ -53,7 +53,7 @@ model = dict(
 
 # optimizer
 optimizer = dict(
-    type='AdamW', lr=0.00006, weight_decay=0.01, eps=1e-8, betas=(0.9, 0.999))
+    type='AdamW', lr=0.0001, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
@@ -74,21 +74,21 @@ param_scheduler = [
         eta_min=0.0,
         power=1.0,
         begin=1500,
-        end=160000,
+        end=90000,
         by_epoch=False,
     )
 ]
 
 # training schedule for 160k
 train_cfg = dict(
-    type='IterBasedTrainLoop', max_iters=160000, val_interval=16000)
+    type='IterBasedTrainLoop', max_iters=90000, val_interval=5000)
 val_cfg = dict(type='ValLoop')
 test_cfg = dict(type='TestLoop')
 default_hooks = dict(
     timer=dict(type='IterTimerHook'),
     logger=dict(type='LoggerHook', interval=50, log_metric_by_epoch=False),
     param_scheduler=dict(type='ParamSchedulerHook'),
-    checkpoint=dict(type='CheckpointHook', by_epoch=False, interval=16000),
+    checkpoint=dict(type='CheckpointHook', by_epoch=False, interval=5000),
     sampler_seed=dict(type='DistSamplerSeedHook'),
     visualization=dict(type='SegVisualizationHook', interval=100, draw=False))
 
@@ -100,7 +100,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="ablation_cityscapes-512x1024", name="mit-b0+allmlp")),
+                dict(type='WandbVisBackend', init_kwargs=dict(project="tiv-mit", name="0-1_mit-b0+allmlp")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')

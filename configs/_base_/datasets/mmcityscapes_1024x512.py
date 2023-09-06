@@ -7,10 +7,14 @@ train_pipeline = [
     # modality value must be modified
     dict(type='LoadCityscapesImageFromFile', to_float32=True, modality='normal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
-    dict(type='LoadCityscapesAnnotations', reduce_zero_label=False),
+    dict(type='LoadAnnotations', reduce_zero_label=False),
     dict(
-        type='Resize',
-        scale=sample_scale),  # Note: w, h instead of h, w
+        type='RandomChoiceResize',
+        scales=[int(1024 * x * 0.1) for x in range(5, 21)],
+        resize_type='ResizeShortestEdge',
+        max_size=4096),  # Note: w, h instead of h, w
+    dict(type='RandomCrop', crop_size=(512, 1024), cat_max_ratio=0.75),
+    dict(type='RandomFlip', prob=0.5),
     dict(type='PackSegInputs')
 ]
 val_pipeline = [
@@ -19,10 +23,10 @@ val_pipeline = [
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(
         type='Resize',
-        scale=sample_scale),  # Note: w, h instead of h, w
+        scale=sample_scale, keep_ratio=True),  # Note: w, h instead of h, w
     # add loading annotation after ``Resize`` because ground truth
     # does not need to do resize data transform
-    dict(type='LoadCityscapesAnnotations', reduce_zero_label=False),
+    dict(type='LoadAnnotations', reduce_zero_label=False),
     dict(type='PackSegInputs')
 ]
 test_pipeline = [
@@ -33,8 +37,8 @@ test_pipeline = [
     dict(type='PackSegInputs')
 ]
 train_dataloader = dict(
-    batch_size=1,
-    num_workers=16,
+    batch_size=5,
+    num_workers=40,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
