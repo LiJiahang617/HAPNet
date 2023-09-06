@@ -6,7 +6,7 @@ from mmseg_custom.registry import DATASETS
 from .basesegdataset import BaseSegDataset
 
 import mmengine
-import mmengine.fileio as fileio
+import mmengine_custom.fileio as fileio
 
 
 @DATASETS.register_module()
@@ -62,7 +62,7 @@ class MMCityscapesDataset(BaseSegDataset):
                              f'{self.modality}, please check your dataset organization!')
         ann_dir = self.data_prefix.get('seg_map_path', None)
         if osp.isfile(self.ann_file):
-            lines = mmengine.list_from_file(
+            lines = mmengine_custom.list_from_file(
                 self.ann_file, backend_args=self.backend_args)
             for line in lines:
                 img_name = line.strip()

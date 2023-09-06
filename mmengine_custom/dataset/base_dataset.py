@@ -9,10 +9,10 @@ from typing import Any, Callable, List, Optional, Sequence, Tuple, Union
 import numpy as np
 from torch.utils.data import Dataset
 
-from mmengine.fileio import join_path, list_from_file, load
-from mmengine.logging import print_log
-from mmengine.registry import TRANSFORMS
-from mmengine.utils import is_abs
+from mmengine_custom.fileio import join_path, list_from_file, load
+from mmengine_custom.logging import print_log
+from mmengine_custom.registry import TRANSFORMS
+from mmengine_custom.utils import is_abs
 
 
 class Compose:
@@ -420,7 +420,7 @@ class BaseDataset(Dataset):
         """Load annotations from an annotation file named as ``self.ann_file``
 
         If the annotation file does not follow `OpenMMLab 2.0 format dataset
-        <https://mmengine.readthedocs.io/en/latest/advanced_tutorials/basedataset.html>`_ .
+        <https://mmengine_custom.readthedocs.io/en/latest/advanced_tutorials/basedataset.html>`_ .
         The subclass must override this method for load annotations. The meta
         information of annotation file will be overwritten :attr:`METAINFO`
         and ``metainfo`` argument of constructor.

@@ -1,9 +1,9 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 from typing import Dict, Optional, Union
 
-from mmengine.optim import _ParamScheduler
-from mmengine.registry import HOOKS
-from mmengine.utils import is_list_of
+from mmengine_custom.optim import _ParamScheduler
+from mmengine_custom.registry import HOOKS
+from mmengine_custom.utils import is_list_of
 from .hook import Hook
 
 DATA_BATCH = Optional[Union[dict, tuple, list]]

@@ -54,7 +54,7 @@ def update_data_root(cfg, logger=None):
         logger (logging.Logger | str | None): the way to print msg
     """
     assert isinstance(cfg, Config), \
-        f'cfg got wrong type: {type(cfg)}, expected mmengine.Config'
+        f'cfg got wrong type: {type(cfg)}, expected mmengine_custom.Config'
 
     if 'MMDET_DATASETS' in os.environ:
         dst_root = os.environ['MMDET_DATASETS']
@@ -64,7 +64,7 @@ def update_data_root(cfg, logger=None):
         return
 
     assert isinstance(cfg, Config), \
-        f'cfg got wrong type: {type(cfg)}, expected mmengine.Config'
+        f'cfg got wrong type: {type(cfg)}, expected mmengine_custom.Config'
 
     def update(cfg, src_str, dst_str):
         for k, v in cfg.items():

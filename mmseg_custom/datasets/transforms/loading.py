@@ -55,7 +55,7 @@ class LoadAnnotations(MMCV_LoadAnnotations):
             See :fun:``mmcv_custom.imfrombytes`` for details.
             Defaults to 'pillow'.
         backend_args (dict): Arguments to instantiate a file backend.
-            See https://mmengine.readthedocs.io/en/latest/api/fileio.htm
+            See https://mmengine_custom.readthedocs.io/en/latest/api/fileio.htm
             for details. Defaults to None.
             Notes: mmcv_custom>=2.0.0rc4, mmengine_custom>=0.2.0 required.
     """
@@ -547,7 +547,7 @@ class LoadBiomedicalImageFromFile(BaseTransform):
             numpy array. If set to False, the loaded image is an float64 array.
             Defaults to True.
         backend_args (dict, Optional): Arguments to instantiate a file backend.
-            See https://mmengine.readthedocs.io/en/latest/api/fileio.htm
+            See https://mmengine_custom.readthedocs.io/en/latest/api/fileio.htm
             for details. Defaults to None.
             Notes: mmcv_custom>=2.0.0rc4, mmengine_custom>=0.2.0 required.
     """
@@ -724,7 +724,7 @@ class LoadBiomedicalData(BaseTransform):
         to_xyz (bool): Whether transpose data from Z, Y, X to X, Y, Z.
             Defaults to False.
         backend_args (dict, Optional): Arguments to instantiate a file backend.
-            See https://mmengine.readthedocs.io/en/latest/api/fileio.htm
+            See https://mmengine_custom.readthedocs.io/en/latest/api/fileio.htm
             for details. Defaults to None.
             Notes: mmcv_custom>=2.0.0rc4, mmengine_custom>=0.2.0 required.
     """

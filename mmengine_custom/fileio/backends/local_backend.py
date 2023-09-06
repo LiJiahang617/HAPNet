@@ -73,7 +73,7 @@ class LocalBackend(BaseStorageBackend):
             >>> filepath = '/path/of/file'
             >>> backend.put(b'hello world', filepath)
         """
-        mmengine.mkdir_or_exist(osp.dirname(filepath))
+        mmengine_custom.mkdir_or_exist(osp.dirname(filepath))
         with open(filepath, 'wb') as f:
             f.write(obj)
 
@@ -98,7 +98,7 @@ class LocalBackend(BaseStorageBackend):
             >>> filepath = '/path/of/file'
             >>> backend.put_text('hello world', filepath)
         """
-        mmengine.mkdir_or_exist(osp.dirname(filepath))
+        mmengine_custom.mkdir_or_exist(osp.dirname(filepath))
         with open(filepath, 'w', encoding=encoding) as f:
             f.write(obj)
 

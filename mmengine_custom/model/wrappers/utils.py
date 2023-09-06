@@ -1,7 +1,7 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import torch.nn as nn
 
-from mmengine.registry import MODEL_WRAPPERS, Registry
+from mmengine_custom.registry import MODEL_WRAPPERS, Registry
 
 
 def is_model_wrapper(model: nn.Module, registry: Registry = MODEL_WRAPPERS):

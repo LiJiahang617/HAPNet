@@ -4,8 +4,8 @@ from typing import Optional, Union
 
 import torch
 
-from mmengine.dist.utils import master_only
-from mmengine.logging import MMLogger, print_log
+from mmengine_custom.dist.utils import master_only
+from mmengine_custom.logging import MMLogger, print_log
 
 
 class TimeCounter:

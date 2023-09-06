@@ -4,7 +4,7 @@ import time
 from contextlib import contextmanager
 from typing import Generator, Optional
 
-from mmengine.utils.manager import ManagerMixin, _accquire_lock, _release_lock
+from mmengine_custom.utils.manager import ManagerMixin, _accquire_lock, _release_lock
 
 
 class DefaultScope(ManagerMixin):

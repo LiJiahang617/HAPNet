@@ -8,8 +8,8 @@ from typing import Iterable, List, Optional, Union
 
 import torch.nn as nn
 
-from mmengine.dist import master_only
-from mmengine.logging import MMLogger, print_log
+from mmengine_custom.dist import master_only
+from mmengine_custom.logging import MMLogger, print_log
 from .weight_init import initialize, update_init_info
 from .wrappers.utils import is_model_wrapper
 

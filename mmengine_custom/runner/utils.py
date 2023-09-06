@@ -6,10 +6,10 @@ from typing import List, Optional, Tuple
 import numpy as np
 import torch
 
-from mmengine.dist import get_rank, sync_random_seed
-from mmengine.logging import print_log
-from mmengine.utils import digit_version, is_list_of
-from mmengine.utils.dl_utils import TORCH_VERSION
+from mmengine_custom.dist import get_rank, sync_random_seed
+from mmengine_custom.logging import print_log
+from mmengine_custom.utils import digit_version, is_list_of
+from mmengine_custom.utils.dl_utils import TORCH_VERSION
 
 
 def calc_dynamic_intervals(

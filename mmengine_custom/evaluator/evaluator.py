@@ -1,9 +1,9 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 from typing import Any, Iterator, List, Optional, Sequence, Union
 
-from mmengine.dataset import pseudo_collate
-from mmengine.registry import EVALUATOR, METRICS
-from mmengine.structures import BaseDataElement
+from mmengine_custom.dataset import pseudo_collate
+from mmengine_custom.registry import EVALUATOR, METRICS
+from mmengine_custom.structures import BaseDataElement
 from .metric import BaseMetric
 
 

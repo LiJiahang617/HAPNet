@@ -6,7 +6,7 @@ from typing import Any, List, Union
 import numpy as np
 import torch
 
-from mmengine.device import get_device
+from mmengine_custom.device import get_device
 from .base_data_element import BaseDataElement
 
 BoolTypeTensor: Union[Any]

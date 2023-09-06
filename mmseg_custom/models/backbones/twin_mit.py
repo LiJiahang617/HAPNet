@@ -10,11 +10,11 @@ from mmcv_custom.cnn import Conv2d, build_activation_layer, build_norm_layer
 from mmcv_custom.cnn.bricks.drop import build_dropout
 from mmcv_custom.cnn.bricks.transformer import MultiheadAttention
 
-from mmengine.logging import print_log
-from mmengine.model import BaseModule, ModuleList, Sequential
-from mmengine.model.weight_init import (constant_init, normal_init,
+from mmengine_custom.logging import print_log
+from mmengine_custom.model import BaseModule, ModuleList, Sequential
+from mmengine_custom.model.weight_init import (constant_init, normal_init,
                                         trunc_normal_init)
-from mmengine.runner import CheckpointLoader
+from mmengine_custom.runner import CheckpointLoader
 
 from mmseg_custom.registry import MODELS
 from ..utils import PatchEmbed, nchw_to_nlc, nlc_to_nchw

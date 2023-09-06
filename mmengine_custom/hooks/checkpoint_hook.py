@@ -8,11 +8,11 @@ from math import inf
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Sequence, Union
 
-from mmengine.dist import is_main_process, master_only
-from mmengine.fileio import FileClient, get_file_backend
-from mmengine.logging import print_log
-from mmengine.registry import HOOKS
-from mmengine.utils import is_list_of, is_seq_of
+from mmengine_custom.dist import is_main_process, master_only
+from mmengine_custom.fileio import FileClient, get_file_backend
+from mmengine_custom.logging import print_log
+from mmengine_custom.registry import HOOKS
+from mmengine_custom.utils import is_list_of, is_seq_of
 from .hook import Hook
 
 DATA_BATCH = Optional[Union[dict, tuple, list]]
@@ -376,8 +376,8 @@ class CheckpointHook(Hook):
             runner (Runner): The runner of the training process.
             ckpt_path (str): The checkpoint path that ought to be published.
         """
-        from mmengine.runner import save_checkpoint
-        from mmengine.runner.checkpoint import _load_checkpoint
+        from mmengine_custom.runner import save_checkpoint
+        from mmengine_custom.runner.checkpoint import _load_checkpoint
         checkpoint = _load_checkpoint(ckpt_path)
         assert self.published_keys is not None
         removed_keys = []

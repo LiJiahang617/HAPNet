@@ -13,7 +13,7 @@ def replace_cfg_vals(ori_cfg):
     < https://github.com/microsoft/SoftTeacher/blob/main/ssod/utils/vars.py>`_  # noqa: E501
 
     Args:
-        ori_cfg (mmengine.config.Config):
+        ori_cfg (mmengine_custom.config.Config):
             The origin config with "${key}" generated from a file.
 
     Returns:

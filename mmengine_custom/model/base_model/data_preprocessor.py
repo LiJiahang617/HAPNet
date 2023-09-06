@@ -6,9 +6,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from mmengine.registry import MODELS
-from mmengine.structures import BaseDataElement
-from mmengine.utils import is_seq_of
+from mmengine_custom.registry import MODELS
+from mmengine_custom.structures import BaseDataElement
+from mmengine_custom.utils import is_seq_of
 from ..utils import stack_batch
 
 CastData = Union[tuple, dict, BaseDataElement, torch.Tensor, list, bytes, str,

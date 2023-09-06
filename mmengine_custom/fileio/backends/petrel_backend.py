@@ -9,7 +9,7 @@ from shutil import SameFileError
 from typing import Generator, Iterator, Optional, Tuple, Union
 
 import mmengine
-from mmengine.utils import has_method
+from mmengine_custom.utils import has_method
 from .base import BaseStorageBackend
 
 
@@ -554,7 +554,7 @@ class PetrelBackend(BaseStorageBackend):
         """
         for path in self.list_dir_or_file(src, list_dir=False, recursive=True):
             dst_path = osp.join(dst, path)
-            mmengine.mkdir_or_exist(osp.dirname(dst_path))
+            mmengine_custom.mkdir_or_exist(osp.dirname(dst_path))
             with open(dst_path, 'wb') as f:
                 f.write(self.get(self.join_path(src, path)))
 

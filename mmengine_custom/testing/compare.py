@@ -9,9 +9,9 @@ from unittest.mock import patch
 from torch.nn import GroupNorm, LayerNorm
 from torch.testing import assert_allclose as _assert_allclose
 
-from mmengine.utils import digit_version
-from mmengine.utils.dl_utils import TORCH_VERSION
-from mmengine.utils.dl_utils.parrots_wrapper import _BatchNorm, _InstanceNorm
+from mmengine_custom.utils import digit_version
+from mmengine_custom.utils.dl_utils import TORCH_VERSION
+from mmengine_custom.utils.dl_utils.parrots_wrapper import _BatchNorm, _InstanceNorm
 
 
 def assert_allclose(

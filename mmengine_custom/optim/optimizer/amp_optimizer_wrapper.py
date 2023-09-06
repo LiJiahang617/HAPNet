@@ -5,11 +5,11 @@ from typing import Union
 import torch
 import torch.nn as nn
 
-from mmengine.device import (is_cuda_available, is_mlu_available,
+from mmengine_custom.device import (is_cuda_available, is_mlu_available,
                              is_npu_available)
-from mmengine.registry import OPTIM_WRAPPERS
-from mmengine.utils import digit_version
-from mmengine.utils.dl_utils import TORCH_VERSION
+from mmengine_custom.registry import OPTIM_WRAPPERS
+from mmengine_custom.utils import digit_version
+from mmengine_custom.utils.dl_utils import TORCH_VERSION
 from .optimizer_wrapper import OptimWrapper
 
 if is_npu_available():
@@ -162,6 +162,6 @@ class AmpOptimWrapper(OptimWrapper):
         Args:
             model (nn.Module): The training model.
         """
-        from mmengine.runner.amp import autocast
+        from mmengine_custom.runner.amp import autocast
         with super().optim_context(model), autocast(dtype=self.cast_dtype):
             yield

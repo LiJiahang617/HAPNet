@@ -6,8 +6,8 @@ from typing import Iterator, Optional, Sized
 import torch
 from torch.utils.data import Sampler
 
-from mmengine.dist import get_dist_info, sync_random_seed
-from mmengine.registry import DATA_SAMPLERS
+from mmengine_custom.dist import get_dist_info, sync_random_seed
+from mmengine_custom.registry import DATA_SAMPLERS
 
 
 @DATA_SAMPLERS.register_module()

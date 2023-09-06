@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Any, Optional, Union
 
 import numpy as np
 
-from mmengine.utils import ManagerMixin
+from mmengine_custom.utils import ManagerMixin
 from .history_buffer import HistoryBuffer
 from .logger import print_log
 

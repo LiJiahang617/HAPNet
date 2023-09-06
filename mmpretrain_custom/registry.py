@@ -1,9 +1,9 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 """MMPretrain provides 21 registry nodes to support using modules across
-projects. Each node is a child of the root registry in MMEngine.
+projects. Each node is a child of the root registry in mmengine_custom.
 
 More details can be found at
-https://mmengine.readthedocs.io/en/latest/tutorials/registry.html.
+https://mmengine_custom.readthedocs.io/en/latest/tutorials/registry.html.
 """
 
 from mmengine_custom.registry import DATA_SAMPLERS as MMENGINE_DATA_SAMPLERS

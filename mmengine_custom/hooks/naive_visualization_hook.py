@@ -5,9 +5,9 @@ from typing import Optional, Sequence, Tuple, Union
 import cv2
 import numpy as np
 
-from mmengine.hooks import Hook
-from mmengine.registry import HOOKS
-from mmengine.utils.dl_utils import tensor2imgs
+from mmengine_custom.hooks import Hook
+from mmengine_custom.registry import HOOKS
+from mmengine_custom.utils.dl_utils import tensor2imgs
 
 DATA_BATCH = Optional[Union[dict, tuple, list]]
 

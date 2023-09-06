@@ -9,12 +9,12 @@ from typing import Dict, Optional, Sequence, Union
 import numpy as np
 import torch
 
-from mmengine.fileio import FileClient, dump
-from mmengine.fileio.io import get_file_backend
-from mmengine.hooks import Hook
-from mmengine.logging import print_log
-from mmengine.registry import HOOKS
-from mmengine.utils import is_seq_of, scandir
+from mmengine_custom.fileio import FileClient, dump
+from mmengine_custom.fileio.io import get_file_backend
+from mmengine_custom.hooks import Hook
+from mmengine_custom.logging import print_log
+from mmengine_custom.registry import HOOKS
+from mmengine_custom.utils import is_seq_of, scandir
 
 DATA_BATCH = Optional[Union[dict, tuple, list]]
 SUFFIX_TYPE = Union[Sequence[str], str]

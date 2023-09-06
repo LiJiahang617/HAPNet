@@ -18,27 +18,27 @@ from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
 import mmengine
-from mmengine.config import Config, ConfigDict
-from mmengine.dataset import worker_init_fn as default_worker_init_fn
-from mmengine.device import get_device
-from mmengine.dist import (broadcast, get_dist_info, get_rank, init_dist,
+from mmengine_custom.config import Config, ConfigDict
+from mmengine_custom.dataset import worker_init_fn as default_worker_init_fn
+from mmengine_custom.device import get_device
+from mmengine_custom.dist import (broadcast, get_dist_info, get_rank, init_dist,
                            is_distributed, master_only)
-from mmengine.evaluator import Evaluator
-from mmengine.fileio import FileClient, join_path
-from mmengine.hooks import Hook
-from mmengine.logging import MessageHub, MMLogger, print_log
-from mmengine.model import (MMDistributedDataParallel, convert_sync_batchnorm,
+from mmengine_custom.evaluator import Evaluator
+from mmengine_custom.fileio import FileClient, join_path
+from mmengine_custom.hooks import Hook
+from mmengine_custom.logging import MessageHub, MMLogger, print_log
+from mmengine_custom.model import (MMDistributedDataParallel, convert_sync_batchnorm,
                             is_model_wrapper, revert_sync_batchnorm)
-from mmengine.optim import (OptimWrapper, OptimWrapperDict, _ParamScheduler,
+from mmengine_custom.optim import (OptimWrapper, OptimWrapperDict, _ParamScheduler,
                             build_optim_wrapper)
-from mmengine.registry import (DATA_SAMPLERS, DATASETS, EVALUATOR, FUNCTIONS,
+from mmengine_custom.registry import (DATA_SAMPLERS, DATASETS, EVALUATOR, FUNCTIONS,
                                HOOKS, LOG_PROCESSORS, LOOPS, MODEL_WRAPPERS,
                                MODELS, OPTIM_WRAPPERS, PARAM_SCHEDULERS,
                                RUNNERS, VISUALIZERS, DefaultScope)
-from mmengine.utils import apply_to, digit_version, get_git_hash, is_seq_of
-from mmengine.utils.dl_utils import (TORCH_VERSION, collect_env,
+from mmengine_custom.utils import apply_to, digit_version, get_git_hash, is_seq_of
+from mmengine_custom.utils.dl_utils import (TORCH_VERSION, collect_env,
                                      set_multi_processing)
-from mmengine.visualization import Visualizer
+from mmengine_custom.visualization import Visualizer
 from .base_loop import BaseLoop
 from .checkpoint import (_load_checkpoint, _load_checkpoint_to_model,
                          find_latest_checkpoint, save_checkpoint,
@@ -271,7 +271,7 @@ class Runner:
         cfg: Optional[ConfigType] = None,
     ):
         self._work_dir = osp.abspath(work_dir)
-        mmengine.mkdir_or_exist(self._work_dir)
+        mmengine_custom.mkdir_or_exist(self._work_dir)
 
         # recursively copy the `cfg` because `self.cfg` will be modified
         # everywhere.
@@ -364,7 +364,7 @@ class Runner:
         else:
             self._experiment_name = self.timestamp
         self._log_dir = osp.join(self.work_dir, self.timestamp)
-        mmengine.mkdir_or_exist(self._log_dir)
+        mmengine_custom.mkdir_or_exist(self._log_dir)
         # Used to reset registries location. See :meth:`Registry.build` for
         # more details.
         self.default_scope = DefaultScope.get_instance(
@@ -1221,7 +1221,7 @@ class Runner:
             schedulers build from ``scheduler``.
 
         .. _optimizer-docs:
-           https://mmengine.readthedocs.io/en/latest/tutorials/optim_wrapper.html
+           https://mmengine_custom.readthedocs.io/en/latest/tutorials/optim_wrapper.html
         """
         param_schedulers: ParamSchedulerType
         if not isinstance(self.optim_wrapper, OptimWrapperDict):
@@ -1969,7 +1969,7 @@ class Runner:
         # check whether the number of GPU used for current experiment
         # is consistent with resuming from checkpoint
         if 'config' in checkpoint['meta']:
-            config = mmengine.Config.fromstring(
+            config = mmengine_custom.Config.fromstring(
                 checkpoint['meta']['config'], file_format='.py')
             previous_gpu_ids = config.get('gpu_ids', None)
             if (previous_gpu_ids is not None and len(previous_gpu_ids) > 0
@@ -2155,7 +2155,7 @@ class Runner:
             seed=self.seed,
             experiment_name=self.experiment_name,
             time=time.strftime('%Y%m%d_%H%M%S', time.localtime()),
-            mmengine_version=mmengine.__version__ + get_git_hash())
+            mmengine_version=mmengine_custom.__version__ + get_git_hash())
 
         if hasattr(self.train_dataloader.dataset, 'metainfo'):
             meta.update(dataset_meta=self.train_dataloader.dataset.metainfo)

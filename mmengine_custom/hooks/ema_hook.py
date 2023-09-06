@@ -4,9 +4,9 @@ import itertools
 import logging
 from typing import Dict, Optional
 
-from mmengine.logging import print_log
-from mmengine.model import is_model_wrapper
-from mmengine.registry import HOOKS, MODELS
+from mmengine_custom.logging import print_log
+from mmengine_custom.model import is_model_wrapper
+from mmengine_custom.registry import HOOKS, MODELS
 from .hook import DATA_BATCH, Hook
 
 
@@ -176,7 +176,7 @@ class EMAHook(Hook):
         Args:
             runner (Runner): The runner of the testing process.
         """
-        from mmengine.runner.checkpoint import load_state_dict
+        from mmengine_custom.runner.checkpoint import load_state_dict
         if 'ema_state_dict' in checkpoint and runner._resume:
             # The original model parameters are actually saved in ema
             # field swap the weights back to resume ema state.

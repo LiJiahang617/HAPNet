@@ -116,7 +116,7 @@ class InferenceBenchmark(BaseBenchmark):
     CUDA memory and CPU memory information.
 
     Args:
-        cfg (mmengine.Config): config.
+        cfg (mmengine_custom.Config): config.
         checkpoint (str): Accept local filepath, URL, ``torchvision://xxx``,
             ``open-mmlab://xxx``.
         distributed (bool): distributed testing flag.
@@ -273,7 +273,7 @@ class DataLoaderBenchmark(BaseBenchmark):
     CPU memory information.
 
     Args:
-        cfg (mmengine.Config): config.
+        cfg (mmengine_custom.Config): config.
         distributed (bool): distributed testing flag.
         dataset_type (str): benchmark data type, only supports ``train``,
             ``val`` and ``test``.
@@ -401,7 +401,7 @@ class DatasetBenchmark(BaseBenchmark):
     pre transform and CPU memory information.
 
     Args:
-        cfg (mmengine.Config): config.
+        cfg (mmengine_custom.Config): config.
         dataset_type (str): benchmark data type, only supports ``train``,
             ``val`` and ``test``.
         max_iter (int): maximum iterations of benchmark. Defaults to 2000.

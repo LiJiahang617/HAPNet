@@ -37,7 +37,7 @@ from io import BytesIO, StringIO
 from pathlib import Path
 from typing import Generator, Iterator, Optional, Tuple, Union
 
-from mmengine.utils import is_filepath, is_str
+from mmengine_custom.utils import is_filepath, is_str
 from .backends import backends, prefix_to_backends
 from .file_client import FileClient
 # file_handlers and register_handler had been moved to

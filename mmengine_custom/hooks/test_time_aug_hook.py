@@ -2,10 +2,10 @@
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from mmengine.runner import Runner
+    from mmengine_custom.runner import Runner
 
-from mmengine.hooks import Hook
-from mmengine.registry import HOOKS, MODELS, RUNNERS
+from mmengine_custom.hooks import Hook
+from mmengine_custom.registry import HOOKS, MODELS, RUNNERS
 
 
 @HOOKS.register_module()
@@ -61,7 +61,7 @@ def build_runner_with_tta(cfg: dict) -> 'Runner':
     if 'runner_type' in cfg:
         runner = RUNNERS.build(cfg)
     else:
-        from mmengine.runner import Runner
+        from mmengine_custom.runner import Runner
         runner = Runner.from_cfg(cfg)
 
     runner.register_hook(PrepareTTAHook(tta_cfg=cfg['tta_model']))

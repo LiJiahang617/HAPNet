@@ -6,9 +6,9 @@ from typing import Dict, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from mmengine.optim import OptimWrapper
-from mmengine.registry import MODELS
-from mmengine.utils import is_list_of
+from mmengine_custom.optim import OptimWrapper
+from mmengine_custom.registry import MODELS
+from mmengine_custom.utils import is_list_of
 from ..base_module import BaseModule
 from .data_preprocessor import BaseDataPreprocessor
 

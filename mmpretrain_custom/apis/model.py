@@ -127,7 +127,7 @@ def get_model(model: Union[str, Config],
         **kwargs: Other keyword arguments of the model config.
 
     Returns:
-        mmengine.model.BaseModel: The result model.
+        mmengine_custom.model.BaseModel: The result model.
 
     Examples:
         Get a ResNet-50 model and extract images feature:

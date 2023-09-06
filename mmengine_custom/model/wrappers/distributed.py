@@ -4,8 +4,8 @@ from typing import Any, Dict, Union
 import torch
 from torch.nn.parallel import DataParallel, DistributedDataParallel
 
-from mmengine.optim import OptimWrapper
-from mmengine.registry import MODEL_WRAPPERS
+from mmengine_custom.optim import OptimWrapper
+from mmengine_custom.registry import MODEL_WRAPPERS
 from ..utils import detect_anomalous_params
 
 MODEL_WRAPPERS.register_module(module=DistributedDataParallel)

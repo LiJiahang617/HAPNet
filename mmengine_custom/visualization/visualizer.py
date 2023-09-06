@@ -13,18 +13,18 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 
-from mmengine.config import Config
-from mmengine.dist import master_only
-from mmengine.logging import print_log
-from mmengine.registry import VISBACKENDS, VISUALIZERS
-from mmengine.structures import BaseDataElement
-from mmengine.utils import ManagerMixin
-from mmengine.visualization.utils import (check_type, check_type_and_length,
+from mmengine_custom.config import Config
+from mmengine_custom.dist import master_only
+from mmengine_custom.logging import print_log
+from mmengine_custom.registry import VISBACKENDS, VISUALIZERS
+from mmengine_custom.structures import BaseDataElement
+from mmengine_custom.utils import ManagerMixin
+from mmengine_custom.visualization.utils import (check_type, check_type_and_length,
                                           color_str2rgb, color_val_matplotlib,
                                           convert_overlay_heatmap,
                                           img_from_canvas, tensor2ndarray,
                                           value2list, wait_continue)
-from mmengine.visualization.vis_backend import BaseVisBackend
+from mmengine_custom.visualization.vis_backend import BaseVisBackend
 
 
 @VISUALIZERS.register_module()

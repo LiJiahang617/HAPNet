@@ -8,8 +8,8 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from mmengine.logging import print_log
-from mmengine.registry import WEIGHT_INITIALIZERS, build_from_cfg
+from mmengine_custom.logging import print_log
+from mmengine_custom.registry import WEIGHT_INITIALIZERS, build_from_cfg
 
 
 def update_init_info(module, init_info):
@@ -482,7 +482,7 @@ class PretrainedInit:
         self.map_location = map_location
 
     def __call__(self, module):
-        from mmengine.runner.checkpoint import (_load_checkpoint_with_prefix,
+        from mmengine_custom.runner.checkpoint import (_load_checkpoint_with_prefix,
                                                 load_checkpoint,
                                                 load_state_dict)
         if self.prefix is None:

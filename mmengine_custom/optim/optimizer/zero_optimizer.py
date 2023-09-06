@@ -3,9 +3,9 @@
 import torch
 from torch.distributed.rpc import is_available
 
-from mmengine.dist import is_main_process
-from mmengine.utils import digit_version
-from mmengine.utils.dl_utils import TORCH_VERSION
+from mmengine_custom.dist import is_main_process
+from mmengine_custom.utils import digit_version
+from mmengine_custom.utils.dl_utils import TORCH_VERSION
 
 try:
     from torch.distributed.optim import \

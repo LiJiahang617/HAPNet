@@ -7,9 +7,9 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 import torch
 from torch.utils.data import DataLoader
 
-from mmengine.evaluator import Evaluator
-from mmengine.logging import print_log
-from mmengine.registry import LOOPS
+from mmengine_custom.evaluator import Evaluator
+from mmengine_custom.logging import print_log
+from mmengine_custom.registry import LOOPS
 from .amp import autocast
 from .base_loop import BaseLoop
 from .utils import calc_dynamic_intervals

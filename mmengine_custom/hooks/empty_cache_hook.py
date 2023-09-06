@@ -3,7 +3,7 @@ from typing import Optional, Sequence, Union
 
 import torch
 
-from mmengine.registry import HOOKS
+from mmengine_custom.registry import HOOKS
 from .hook import Hook
 
 DATA_BATCH = Optional[Union[dict, tuple, list]]

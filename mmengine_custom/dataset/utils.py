@@ -8,8 +8,8 @@ import torch
 from torch.utils.data._utils.collate import \
     default_collate as torch_default_collate
 
-from mmengine.registry import FUNCTIONS
-from mmengine.structures import BaseDataElement
+from mmengine_custom.registry import FUNCTIONS
+from mmengine_custom.structures import BaseDataElement
 
 # FUNCTIONS is new in MMEngine v0.7.0. Reserve the `COLLATE_FUNCTIONS` to keep
 # the compatibility.

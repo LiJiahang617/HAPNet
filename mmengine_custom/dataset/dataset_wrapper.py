@@ -8,8 +8,8 @@ from typing import List, Sequence, Tuple, Union
 
 from torch.utils.data.dataset import ConcatDataset as _ConcatDataset
 
-from mmengine.logging import print_log
-from mmengine.registry import DATASETS
+from mmengine_custom.logging import print_log
+from mmengine_custom.registry import DATASETS
 from .base_dataset import BaseDataset, force_full_init
 
 

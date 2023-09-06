@@ -8,7 +8,7 @@ import torch.nn as nn
 # a circular import will be caused by
 # from mmengine_custom.model.wrappers import is_model_wrapper
 import mmengine
-from mmengine.registry import OPTIM_WRAPPERS
+from mmengine_custom.registry import OPTIM_WRAPPERS
 from .optimizer_wrapper import OptimWrapper
 
 try:
@@ -176,7 +176,7 @@ class ApexOptimWrapper(OptimWrapper):
             # when a given optimizer be passed through apex_amp.initialize,
             # the "_amp_stash" property will be added
             if not hasattr(self.optimizer, '_amp_stash'):
-                if mmengine.model.wrappers.is_model_wrapper(model):
+                if mmengine_custom.model.wrappers.is_model_wrapper(model):
                     model = model.module
                 model, self.optimizer = apex_amp.initialize(
                     model,

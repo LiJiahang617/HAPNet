@@ -13,16 +13,16 @@ import torch.nn as nn
 from torch.distributed import destroy_process_group
 from torch.utils.data import Dataset
 
-import mmengine.hooks  # noqa F401
-import mmengine.optim  # noqa F401
-from mmengine.config import Config
-from mmengine.dist import is_distributed
-from mmengine.evaluator import BaseMetric
-from mmengine.logging import MessageHub, MMLogger
-from mmengine.model import BaseModel
-from mmengine.registry import DATASETS, METRICS, MODELS, DefaultScope
-from mmengine.runner import Runner
-from mmengine.visualization import Visualizer
+import mmengine_custom.hooks  # noqa F401
+import mmengine_custom.optim  # noqa F401
+from mmengine_custom.config import Config
+from mmengine_custom.dist import is_distributed
+from mmengine_custom.evaluator import BaseMetric
+from mmengine_custom.logging import MessageHub, MMLogger
+from mmengine_custom.model import BaseModel
+from mmengine_custom.registry import DATASETS, METRICS, MODELS, DefaultScope
+from mmengine_custom.runner import Runner
+from mmengine_custom.visualization import Visualizer
 
 
 class ToyModel(BaseModel):

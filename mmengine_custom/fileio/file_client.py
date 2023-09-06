@@ -5,8 +5,8 @@ from contextlib import contextmanager
 from pathlib import Path
 from typing import Any, Generator, Iterator, Optional, Tuple, Union
 
-from mmengine.logging import print_log
-from mmengine.utils import is_filepath
+from mmengine_custom.logging import print_log
+from mmengine_custom.utils import is_filepath
 from .backends import (BaseStorageBackend, HTTPBackend, LmdbBackend,
                        LocalBackend, MemcachedBackend, PetrelBackend)
 
@@ -42,7 +42,7 @@ class FileClient:
 
     Warning:
         `FileClient` will be deprecated in future. Please use io functions
-        in https://mmengine.readthedocs.io/en/latest/api/fileio.html#file-io
+        in https://mmengine_custom.readthedocs.io/en/latest/api/fileio.html#file-io
 
     Args:
         backend (str, optional): The storage backend type. Options are "disk",
@@ -89,7 +89,7 @@ class FileClient:
         print_log(
             '"FileClient" will be deprecated in future. Please use io '
             'functions in '
-            'https://mmengine.readthedocs.io/en/latest/api/fileio.html#file-io',  # noqa: E501
+            'https://mmengine_custom.readthedocs.io/en/latest/api/fileio.html#file-io',  # noqa: E501
             logger='current',
             level=logging.WARNING)
         if backend is None and prefix is None:

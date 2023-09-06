@@ -7,8 +7,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from mmengine.logging import print_log
-from mmengine.utils.dl_utils import mmcv_full_available
+from mmengine_custom.logging import print_log
+from mmengine_custom.utils.dl_utils import mmcv_full_available
 
 
 def stack_batch(tensor_list: List[torch.Tensor],

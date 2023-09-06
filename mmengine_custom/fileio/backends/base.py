@@ -2,7 +2,7 @@
 import logging
 from abc import ABCMeta, abstractmethod
 
-from mmengine.logging import print_log
+from mmengine_custom.logging import print_log
 
 
 class BaseStorageBackend(metaclass=ABCMeta):

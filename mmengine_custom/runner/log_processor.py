@@ -9,8 +9,8 @@ from typing import List, Optional, Tuple
 import numpy as np
 import torch
 
-from mmengine.device import get_max_cuda_memory, is_cuda_available
-from mmengine.registry import LOG_PROCESSORS
+from mmengine_custom.device import get_max_cuda_memory, is_cuda_available
+from mmengine_custom.registry import LOG_PROCESSORS
 
 
 @LOG_PROCESSORS.register_module()  # type: ignore

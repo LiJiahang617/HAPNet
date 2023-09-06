@@ -13,14 +13,14 @@ from typing import Callable, Dict, Optional
 import torch
 
 import mmengine
-from mmengine.dist import get_dist_info
-from mmengine.fileio import FileClient, get_file_backend
-from mmengine.fileio import load as load_file
-from mmengine.logging import print_log
-from mmengine.model import BaseTTAModel, is_model_wrapper
-from mmengine.utils import (apply_to, deprecated_function, digit_version,
+from mmengine_custom.dist import get_dist_info
+from mmengine_custom.fileio import FileClient, get_file_backend
+from mmengine_custom.fileio import load as load_file
+from mmengine_custom.logging import print_log
+from mmengine_custom.model import BaseTTAModel, is_model_wrapper
+from mmengine_custom.utils import (apply_to, deprecated_function, digit_version,
                             mkdir_or_exist)
-from mmengine.utils.dl_utils import load_url
+from mmengine_custom.utils.dl_utils import load_url
 
 # `MMENGINE_HOME` is the highest priority directory to save checkpoints
 # downloaded from Internet. If it is not set, as a workaround, using
@@ -162,8 +162,8 @@ def get_torchvision_models():
         # torchvision version>=0.13.0, new URLs will be added. Users can get
         # the resnet50 checkpoint by setting 'resnet50.imagent1k_v1',
         # 'resnet50' or 'ResNet50_Weights.IMAGENET1K_V1' in the config.
-        json_path = osp.join(mmengine.__path__[0], 'hub/torchvision_0.12.json')
-        model_urls = mmengine.load(json_path)
+        json_path = osp.join(mmengine_custom.__path__[0], 'hub/torchvision_0.12.json')
+        model_urls = mmengine_custom.load(json_path)
         if digit_version(torchvision.__version__) < digit_version('0.14.0a0'):
             weights_list = [
                 cls for cls_name, cls in torchvision.models.__dict__.items()
@@ -198,7 +198,7 @@ def get_torchvision_models():
 
 def get_external_models():
     mmengine_home = _get_mmengine_home()
-    default_json_path = osp.join(mmengine.__path__[0], 'hub/openmmlab.json')
+    default_json_path = osp.join(mmengine_custom.__path__[0], 'hub/openmmlab.json')
     default_urls = load_file(default_json_path)
     assert isinstance(default_urls, dict)
     external_json_path = osp.join(mmengine_home, 'open_mmlab.json')
@@ -211,14 +211,14 @@ def get_external_models():
 
 
 def get_mmcls_models():
-    mmcls_json_path = osp.join(mmengine.__path__[0], 'hub/mmcls.json')
+    mmcls_json_path = osp.join(mmengine_custom.__path__[0], 'hub/mmcls.json')
     mmcls_urls = load_file(mmcls_json_path)
 
     return mmcls_urls
 
 
 def get_deprecated_model_names():
-    deprecate_json_path = osp.join(mmengine.__path__[0], 'hub/deprecated.json')
+    deprecate_json_path = osp.join(mmengine_custom.__path__[0], 'hub/deprecated.json')
     deprecate_urls = load_file(deprecate_json_path)
     assert isinstance(deprecate_urls, dict)
 

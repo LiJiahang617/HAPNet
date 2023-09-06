@@ -5,8 +5,8 @@ from typing import Dict, List, Optional, Union
 import torch
 import torch.nn as nn
 
-from mmengine.registry import MODELS
-from mmengine.structures import BaseDataElement
+from mmengine_custom.registry import MODELS
+from mmengine_custom.structures import BaseDataElement
 from .base_model import BaseModel
 
 # multi-batch inputs processed by different augmentations from the same batch.

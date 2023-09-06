@@ -7,10 +7,10 @@ from typing import Callable, Optional, Union
 
 import torch
 
-from mmengine.dist import master_only
-from mmengine.hooks import Hook
-from mmengine.logging import print_log
-from mmengine.registry import HOOKS
+from mmengine_custom.dist import master_only
+from mmengine_custom.hooks import Hook
+from mmengine_custom.logging import print_log
+from mmengine_custom.registry import HOOKS
 
 
 def check_kineto() -> bool:  # noqa

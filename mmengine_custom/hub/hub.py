@@ -2,13 +2,13 @@
 import importlib
 import os.path as osp
 
-from mmengine.config import Config
-from mmengine.config.utils import (_get_cfg_metainfo,
+from mmengine_custom.config import Config
+from mmengine_custom.config.utils import (_get_cfg_metainfo,
                                    _get_external_cfg_base_path,
                                    _get_package_and_cfg_path)
-from mmengine.registry import MODELS, DefaultScope
-from mmengine.runner import load_checkpoint
-from mmengine.utils import get_installed_path, install_package
+from mmengine_custom.registry import MODELS, DefaultScope
+from mmengine_custom.runner import load_checkpoint
+from mmengine_custom.utils import get_installed_path, install_package
 
 
 def get_config(cfg_path: str, pretrained: bool = False) -> Config:

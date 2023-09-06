@@ -8,8 +8,8 @@ import torch
 import torch.nn as nn
 from torch import Tensor
 
-from mmengine.logging import print_log
-from mmengine.registry import MODELS
+from mmengine_custom.logging import print_log
+from mmengine_custom.registry import MODELS
 
 
 class BaseAveragedModel(nn.Module):

@@ -10,8 +10,8 @@ from typing import Any, Dict, Generator, List, Optional, Tuple, Type, Union
 from rich.console import Console
 from rich.table import Table
 
-from mmengine.config.utils import MODULE2PACKAGE
-from mmengine.utils import is_seq_of
+from mmengine_custom.config.utils import MODULE2PACKAGE
+from mmengine_custom.utils import is_seq_of
 from .default_scope import DefaultScope
 
 
@@ -71,7 +71,7 @@ class Registry:
         >>> fasterrcnn = DETECTORS.build(dict(type='det.MaskRCNN'))
 
     More advanced usages can be found at
-    https://mmengine.readthedocs.io/en/latest/advanced_tutorials/registry.html.
+    https://mmengine_custom.readthedocs.io/en/latest/advanced_tutorials/registry.html.
     """
 
     def __init__(self,

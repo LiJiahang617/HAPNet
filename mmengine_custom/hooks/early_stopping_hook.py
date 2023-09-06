@@ -3,7 +3,7 @@ import warnings
 from math import inf, isfinite
 from typing import Optional, Tuple, Union
 
-from mmengine.registry import HOOKS
+from mmengine_custom.registry import HOOKS
 from .hook import Hook
 
 DATA_BATCH = Optional[Union[dict, tuple, list]]

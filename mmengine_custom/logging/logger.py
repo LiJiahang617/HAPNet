@@ -11,8 +11,8 @@ from typing import Optional, Union
 
 from termcolor import colored
 
-from mmengine.utils import ManagerMixin
-from mmengine.utils.manager import _accquire_lock, _release_lock
+from mmengine_custom.utils import ManagerMixin
+from mmengine_custom.utils.manager import _accquire_lock, _release_lock
 
 
 class FilterDuplicateWarning(logging.Filter):
@@ -341,7 +341,7 @@ def _get_world_size():
     """Support using logging module without torch."""
     try:
         # requires torch
-        from mmengine.dist import get_world_size
+        from mmengine_custom.dist import get_world_size
     except ImportError:
         return 1
     else:
@@ -352,7 +352,7 @@ def _get_rank():
     """Support using logging module without torch."""
     try:
         # requires torch
-        from mmengine.dist import get_rank
+        from mmengine_custom.dist import get_rank
     except ImportError:
         return 0
     else:

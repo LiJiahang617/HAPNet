@@ -14,18 +14,18 @@ import torch
 import torch.nn as nn
 from rich.progress import track
 
-from mmengine.config import Config, ConfigDict
-from mmengine.config.utils import MODULE2PACKAGE
-from mmengine.dataset import pseudo_collate
-from mmengine.device import get_device
-from mmengine.fileio import (get_file_backend, isdir, join_path,
+from mmengine_custom.config import Config, ConfigDict
+from mmengine_custom.config.utils import MODULE2PACKAGE
+from mmengine_custom.dataset import pseudo_collate
+from mmengine_custom.device import get_device
+from mmengine_custom.fileio import (get_file_backend, isdir, join_path,
                              list_dir_or_file, load)
-from mmengine.logging import print_log
-from mmengine.registry import FUNCTIONS, MODELS, VISUALIZERS, DefaultScope
-from mmengine.runner.checkpoint import (_load_checkpoint,
+from mmengine_custom.logging import print_log
+from mmengine_custom.registry import FUNCTIONS, MODELS, VISUALIZERS, DefaultScope
+from mmengine_custom.runner.checkpoint import (_load_checkpoint,
                                         _load_checkpoint_to_model)
-from mmengine.structures import InstanceData
-from mmengine.visualization import Visualizer
+from mmengine_custom.structures import InstanceData
+from mmengine_custom.visualization import Visualizer
 
 InstanceList = List[InstanceData]
 InputType = Union[str, np.ndarray, torch.Tensor]

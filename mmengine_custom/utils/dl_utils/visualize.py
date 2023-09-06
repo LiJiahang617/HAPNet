@@ -4,8 +4,8 @@ from unittest.mock import patch
 import torch
 import torch.nn as nn
 
-from mmengine.model import BaseModel
-from mmengine.registry import MODELS
+from mmengine_custom.model import BaseModel
+from mmengine_custom.registry import MODELS
 
 
 @MODELS.register_module()
@@ -38,7 +38,7 @@ def runtimeinfo_step(self, runner, batch_idx, data_batch=None):
        update_params_step)
 @patch('mmengine_custom.hooks.RuntimeInfoHook.before_train_iter', runtimeinfo_step)
 def fake_run(cfg):
-    from mmengine.runner import Runner
+    from mmengine_custom.runner import Runner
     cfg.pop('model')
     cfg.pop('visualizer')
     cfg.pop('val_dataloader')

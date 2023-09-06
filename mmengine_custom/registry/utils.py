@@ -4,8 +4,8 @@ import logging
 import os.path as osp
 from typing import Optional
 
-from mmengine.fileio import dump
-from mmengine.logging import print_log
+from mmengine_custom.fileio import dump
+from mmengine_custom.logging import print_log
 from . import root
 from .default_scope import DefaultScope
 from .registry import Registry
@@ -65,13 +65,13 @@ def count_registered_modules(save_path: Optional[str] = None,
         dict: Statistic results of all registered modules.
     """
     # import modules to trigger registering
-    import mmengine.dataset
-    import mmengine.evaluator
-    import mmengine.hooks
-    import mmengine.model
-    import mmengine.optim
-    import mmengine.runner
-    import mmengine.visualization  # noqa: F401
+    import mmengine_custom.dataset
+    import mmengine_custom.evaluator
+    import mmengine_custom.hooks
+    import mmengine_custom.model
+    import mmengine_custom.optim
+    import mmengine_custom.runner
+    import mmengine_custom.visualization  # noqa: F401
 
     registries_info = {}
     # traverse all registries in MMEngine

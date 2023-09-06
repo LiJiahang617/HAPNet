@@ -31,7 +31,7 @@ class SegVisualizationHook(Hook):
         show (bool): Whether to display the drawn image. Default to False.
         wait_time (float): The interval of show (s). Defaults to 0.
         backend_args (dict, Optional): Arguments to instantiate a file backend.
-            See https://mmengine.readthedocs.io/en/latest/api/fileio.htm
+            See https://mmengine_custom.readthedocs.io/en/latest/api/fileio.htm
             for details. Defaults to None.
             Notes: mmcv_custom>=2.0.0rc4, mmengine_custom>=0.2.0 required.
     """
@@ -117,7 +117,7 @@ class SegVisualizationHookplus(Hook):
         show (bool): Whether to display the drawn image. Default to False.
         wait_time (float): The interval of show (s). Defaults to 0.
         backend_args (dict, Optional): Arguments to instantiate a file backend.
-            See https://mmengine.readthedocs.io/en/latest/api/fileio.htm
+            See https://mmengine_custom.readthedocs.io/en/latest/api/fileio.htm
             for details. Defaults to None.
             Notes: mmcv_custom>=2.0.0rc4, mmengine_custom>=0.2.0 required.
     """

@@ -9,10 +9,10 @@ import torch.utils.checkpoint as cp
 
 from mmcv_custom.cnn import build_activation_layer, build_norm_layer
 from mmcv_custom.cnn.bricks import DropPath
-from mmengine.model import BaseModule
-from mmengine.logging import print_log
-from mmengine.runner import CheckpointLoader
-from mmengine.model.weight_init import (constant_init, normal_init,
+from mmengine_custom.model import BaseModule
+from mmengine_custom.logging import print_log
+from mmengine_custom.runner import CheckpointLoader
+from mmengine_custom.model.weight_init import (constant_init, normal_init,
                                         trunc_normal_init)
 
 from mmseg_custom.registry import MODELS

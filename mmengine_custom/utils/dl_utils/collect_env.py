@@ -137,6 +137,6 @@ def collect_env():
         pass
 
     env_info['OpenCV'] = cv2.__version__
-    env_info['MMEngine'] = mmengine.__version__
+    env_info['MMEngine'] = mmengine_custom.__version__
 
     return env_info

@@ -1,5 +1,5 @@
 # Copyright (c) OpenMMLab. All rights reserved.
-from mmengine.registry import PARAM_SCHEDULERS
+from mmengine_custom.registry import PARAM_SCHEDULERS
 # yapf: disable
 from .param_scheduler import (ConstantParamScheduler,
                               CosineAnnealingParamScheduler,

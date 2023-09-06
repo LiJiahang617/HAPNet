@@ -18,9 +18,9 @@ from typing import Any, Optional, Sequence, Tuple, Union
 from addict import Dict
 from yapf.yapflib.yapf_api import FormatCode
 
-from mmengine.fileio import dump, load
-from mmengine.logging import print_log
-from mmengine.utils import (check_file_exist, get_installed_path,
+from mmengine_custom.fileio import dump, load
+from mmengine_custom.logging import print_log
+from mmengine_custom.utils import (check_file_exist, get_installed_path,
                             import_modules_from_strings, is_installed)
 from .utils import (RemoveAssignFromAST, _get_external_cfg_base_path,
                     _get_external_cfg_path, _get_package_and_cfg_path)
@@ -660,7 +660,7 @@ class Config:
                     base_files = []
         elif file_format in ('.yml', '.yaml', '.json'):
             import mmengine
-            cfg_dict = mmengine.load(filename)
+            cfg_dict = mmengine_custom.load(filename)
             base_files = cfg_dict.get(BASE_KEY, [])
         else:
             raise TypeError('The config type should be py, json, yaml or '
