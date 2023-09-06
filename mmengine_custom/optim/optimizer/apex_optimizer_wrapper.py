@@ -7,7 +7,7 @@ import torch.nn as nn
 
 # a circular import will be caused by
 # from mmengine_custom.model.wrappers import is_model_wrapper
-import mmengine
+import mmengine_custom
 from mmengine_custom.registry import OPTIM_WRAPPERS
 from .optimizer_wrapper import OptimWrapper
 

@@ -448,7 +448,7 @@ def deprecated_function(since: str, removed_in: str,
     Returns:
         Callable: A new function, which will be deprecated soon.
     """  # noqa: E501
-    from mmengine import print_log
+    from mmengine_custom import print_log
 
     def decorator(function):
 

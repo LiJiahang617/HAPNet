@@ -8,7 +8,7 @@ from pathlib import Path
 from shutil import SameFileError
 from typing import Generator, Iterator, Optional, Tuple, Union
 
-import mmengine
+import mmengine_custom
 from mmengine_custom.utils import has_method
 from .base import BaseStorageBackend
 

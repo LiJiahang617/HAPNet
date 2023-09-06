@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 import torch
 
-import mmengine
+import mmengine_custom
 from .parrots_wrapper import TORCH_VERSION, get_build_config, is_rocm_pytorch
 
 

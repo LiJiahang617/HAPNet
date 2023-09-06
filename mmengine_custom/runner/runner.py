@@ -17,7 +17,7 @@ from torch.nn.parallel.distributed import DistributedDataParallel
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader
 
-import mmengine
+import mmengine_custom
 from mmengine_custom.config import Config, ConfigDict
 from mmengine_custom.dataset import worker_init_fn as default_worker_init_fn
 from mmengine_custom.device import get_device

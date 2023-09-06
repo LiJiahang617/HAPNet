@@ -1,7 +1,7 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 from typing import Dict, Optional, Sequence, Union
 
-from mmengine import is_method_overridden
+from mmengine_custom import is_method_overridden
 
 DATA_BATCH = Optional[Union[dict, tuple, list]]
 

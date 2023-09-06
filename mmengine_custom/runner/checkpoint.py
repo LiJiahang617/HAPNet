@@ -12,7 +12,7 @@ from typing import Callable, Dict, Optional
 
 import torch
 
-import mmengine
+import mmengine_custom
 from mmengine_custom.dist import get_dist_info
 from mmengine_custom.fileio import FileClient, get_file_backend
 from mmengine_custom.fileio import load as load_file

@@ -1,6 +1,6 @@
 # dataset settings
 dataset_type = 'MMCityscapesDataset'
-data_root = '/media/ljh/data/Cityscapes'
+data_root = '/remote-home/jhli/mmsegmentation/data/Cityscapes'
 sample_scale = (1024, 512)
 
 train_pipeline = [

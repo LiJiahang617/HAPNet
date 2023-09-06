@@ -5,7 +5,7 @@ from typing import List
 from mmseg_custom.registry import DATASETS
 from .basesegdataset import BaseSegDataset
 
-import mmengine
+import mmengine_custom
 import mmengine_custom.fileio as fileio
 
 
