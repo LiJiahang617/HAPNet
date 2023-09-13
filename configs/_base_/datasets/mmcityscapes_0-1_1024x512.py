@@ -1,6 +1,6 @@
 # dataset settings
 dataset_type = 'MMCityscapesDataset'
-data_root = '/remote-home/jhli/mmsegmentation/data/Cityscapes'
+data_root = '/media/ljh/data/Cityscapes'
 sample_scale = (1024, 512)
 
 train_pipeline = [
@@ -33,7 +33,7 @@ test_pipeline = [
     # modality value must be modified
     dict(type='LoadCityscapesImageFromFile', to_float32=True, modality='normal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
-    dict(type='Resize', scale=sample_scale),
+    dict(type='Resize', scale=sample_scale, keep_ratio=True),
     dict(type='PackSegInputs')
 ]
 train_dataloader = dict(

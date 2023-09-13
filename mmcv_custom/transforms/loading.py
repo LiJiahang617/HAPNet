@@ -111,6 +111,9 @@ class LoadImageFromFile(BaseTransform):
         if self.to_float32:  # Normalization training: restrict pixel values within 0-1
             img = img.astype(np.float32)
             results['img'] = img / 255
+            # print('-----------------------------------------------------------------')
+            # print('now normalize images to 0-1')
+            # print('-----------------------------------------------------------------')
             results['img_shape'] = img.shape[:2]
             results['ori_shape'] = img.shape[:2]
         else:

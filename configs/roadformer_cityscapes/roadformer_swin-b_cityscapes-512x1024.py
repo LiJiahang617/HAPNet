@@ -1,5 +1,5 @@
 _base_ = [
-'../_base_/datasets/mmcityscapes_1024x512.py'
+'../_base_/datasets/mmcityscapes_0-1_1024x512.py'
 ]
 # 3090 batchsize = 1
 pretrained = 'https://download.openmmlab.com/mmsegmentation/v0.5/pretrain/swin/swin_base_patch4_window12_384_20220317-55b0104a.pth'  # noqa

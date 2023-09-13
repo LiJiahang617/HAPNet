@@ -284,6 +284,9 @@ def imfrombytes(content: bytes,
         flag = imread_flags[flag] if is_str(flag) else flag
         img = cv2.imdecode(img_np, flag) # shape of img is ori_shape at this moment
         if flag == IMREAD_COLOR and channel_order == 'rgb': # or may fit more than and in this situation
+            # print('-----------------------------------------------------------------')
+            # print('do convert color from bgr to rgb in io.py')
+            # print('-----------------------------------------------------------------')
             cv2.cvtColor(img, cv2.COLOR_BGR2RGB, img)
         return img
 
@@ -333,7 +336,7 @@ def customfrombytes(content: bytes,
         img_np = np.frombuffer(content, np.uint8)
         flag = imread_flags[flag] if is_str(flag) else flag
         img = cv2.imdecode(img_np, flag) # shape of img is ori_shape at this moment
-        if img.shape[2]==3 and channel_order == 'rgb': # or may fit more than and in this situation
+        if img.shape[2] == 3 and channel_order == 'rgb': # or may fit more than and in this situation
             cv2.cvtColor(img, cv2.COLOR_BGR2RGB, img)
         return img
 

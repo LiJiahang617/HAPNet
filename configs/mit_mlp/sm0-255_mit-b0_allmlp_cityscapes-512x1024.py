@@ -1,5 +1,5 @@
 _base_ = [
-'../_base_/datasets/mmcityscapes_1024x512.py'
+'../_base_/datasets/cityscapes_0-255_1024x512.py'
 ]
 
 pretrained = 'https://download.openmmlab.com/mmsegmentation/v0.5/pretrain/segformer/mit_b0_20220624-7e0fe6dd.pth'
@@ -9,19 +9,19 @@ crop_size = (512, 1024) # h, w
 norm_cfg = dict(type='SyncBN', requires_grad=True)
 data_preprocessor = dict(
     type='SegDataPreProcessor',
-    mean=[0, 0, 0, 0, 0, 0], # because inputs has 6 channels, for two modalities are stacked by channels
-    std=[1, 1, 1, 1, 1, 1],
+    mean=[0, 0, 0],
+    std=[1, 1, 1],
     bgr_to_rgb=True,
     pad_val=0,
     seg_pad_val=255,
-    size=crop_size)
+    size=crop_size) # h, w
 num_classes = 19
 
 model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
     backbone=dict(
-        type='TwinMixVisionTransformer',
+        type='MixVisionTransformer',
         in_channels=3,
         embed_dims=32,
         num_stages=4,
@@ -38,7 +38,7 @@ model = dict(
         init_cfg=dict(type='Pretrained', checkpoint=pretrained)),
     decode_head=dict(
         type='AllmlpHead',
-        in_channels=[64, 128, 320, 512],
+        in_channels=[32, 64, 160, 256],
         in_index=[0, 1, 2, 3],
         channels=256,
         dropout_ratio=0.1,
@@ -88,7 +88,7 @@ default_hooks = dict(
     timer=dict(type='IterTimerHook'),
     logger=dict(type='LoggerHook', interval=50, log_metric_by_epoch=False),
     param_scheduler=dict(type='ParamSchedulerHook'),
-    checkpoint=dict(type='CheckpointHook', by_epoch=False, interval=5000),
+    checkpoint=dict(type='CheckpointHook', by_epoch=False, interval=5000, save_best='mIoU'),
     sampler_seed=dict(type='DistSamplerSeedHook'),
     visualization=dict(type='SegVisualizationHook', interval=100, draw=False))
 
@@ -100,7 +100,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                dict(type='WandbVisBackend', init_kwargs=dict(project="tiv-mit", name="0-1_mit-b0+allmlp")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="tiv-mit", name="0-1_mit-b0+allmlp")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')

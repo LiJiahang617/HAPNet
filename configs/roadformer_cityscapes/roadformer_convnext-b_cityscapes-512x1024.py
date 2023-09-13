@@ -1,5 +1,5 @@
 _base_ = [
-'../_base_/datasets/mmcityscapes_1024x512.py'
+'../_base_/datasets/mmcityscapes_0-1_1024x512.py'
 ]
 
 pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-base_3rdparty_in21k_20220301-262fd037.pth'
