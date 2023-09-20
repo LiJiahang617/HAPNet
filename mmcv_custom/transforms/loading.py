@@ -744,12 +744,12 @@ class LoadCityscapesImageFromFile(BaseTransform):
             elif len(img.shape) > 3:
                 raise ValueError('RGB image has more than 3 dims, but it should not')
             ano = mmcv_custom.customfrombytes(
-                ano_bytes, flag='unchanged', backend=self.imdecode_backend).astype(np.float32)
+                ano_bytes, flag='unchanged', backend=self.imdecode_backend)
             if len(ano.shape) < 3 and self.modality != 'normal':
                 ano = np.expand_dims(ano, -1)
             # in case normal img do not have three dims
-            assert ano.ndim == 3 and ano.dtype == np.float32, 'another image must has 3 dims and float32, ' \
-                                                              f'even if depth/disp, but found {ano.dtype} and {ano.ndim}'
+            assert ano.ndim == 3, 'another image must has 3 dims, ' \
+                                                              f'even if depth/disp, but found {ano.ndim} dims'
         except Exception as e:
             if self.ignore_empty:
                 return None
@@ -761,21 +761,40 @@ class LoadCityscapesImageFromFile(BaseTransform):
         assert ano is not None, f'failed to load image: {anoname}'
         if self.to_float32:
             img = img.astype(np.float32)
-
-        results['img'] = img / 255
-        if self.modality == 'normal':  # in Cityscapes dataset, normal img is uint8, multiplied by 255, so must divided
-            results['ano'] = ano / 255
-        # in Cityscapes dataset, all disp samples are tiff files, in which are raw disp
-        elif self.modality == 'disp' or self.modality == 'tdisp':
-            disp_real = ano.astype(np.float32)
-            max_disp = np.max(disp_real)
-            min_disp = np.min(disp_real)
-            epsilon = 1e-7
-            disp_normalized = (disp_real - min_disp) / (max_disp - min_disp + epsilon)
-            disp_normalized_3ch = np.repeat(disp_normalized, 3, axis=2)
-            results['ano'] = disp_normalized_3ch
+            ano = ano.astype(np.float32)
+            results['img'] = img / 255
+            if self.modality == 'normal':  # in Cityscapes dataset, normal img is uint8, multiplied by 255, so must divided
+                results['ano'] = ano / 255
+            # in Cityscapes dataset, all disp samples are tiff files, in which are raw disp
+            elif self.modality == 'disp' or self.modality == 'tdisp':
+                disp_real = ano.astype(np.float32)
+                max_disp = np.max(disp_real)
+                min_disp = np.min(disp_real)
+                epsilon = 1e-7
+                disp_normalized = (disp_real - min_disp) / (max_disp - min_disp + epsilon)
+                disp_normalized_3ch = np.repeat(disp_normalized, 3, axis=2)
+                results['ano'] = disp_normalized_3ch
+            else:
+                raise ValueError(f'modality only support normal and disp now, not include {self.modality}!')
         else:
-            raise ValueError(f'modality only support normal and disp now, not include {self.modality}!')
+            img = img.astype(np.float32)
+            ano = ano.astype(np.float32)
+            results['img'] = img
+            if self.modality == 'normal':  # in Cityscapes dataset, normal img is uint8, multiplied by 255, so must divided
+                results['ano'] = ano
+            # in Cityscapes dataset, all disp samples are tiff files, in which are raw disp
+            elif self.modality == 'disp' or self.modality == 'tdisp':
+                disp_real = ano
+                max_disp = np.max(disp_real)
+                min_disp = np.min(disp_real)
+                epsilon = 1e-7
+                disp_normalized = (disp_real - min_disp) / (max_disp - min_disp + epsilon)
+                disp_normalized *= 255
+                disp_normalized_3ch = np.repeat(disp_normalized, 3, axis=2)
+                results['ano'] = disp_normalized_3ch
+            else:
+                raise ValueError(f'modality only support normal and disp now, not include {self.modality}!')
+
 
         results['img_shape'] = img.shape[:2]
         results['ano_shape'] = ano.shape

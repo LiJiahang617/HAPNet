@@ -1,5 +1,5 @@
 _base_ = [
-'../_base_/datasets/mmcityscapes_0-1_1024x512.py'
+'../_base_/datasets/mmcityscapes_0-255_1024x512.py'
 ]
 
 pretrained = 'https://download.openmmlab.com/mmsegmentation/v0.5/pretrain/segformer/mit_b0_20220624-7e0fe6dd.pth'
