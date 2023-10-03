@@ -782,7 +782,7 @@ class LoadCityscapesImageFromFile(BaseTransform):
             results['img'] = img
             if self.modality == 'normal':  # in Cityscapes dataset, normal img is uint8, multiplied by 255, so must divided
                 # for exp in 2023.9.24 mm training: RGB (0-255) Normal (0-1) only, will be deleted after this exp
-                results['ano'] = ano
+                results['ano'] = ano / 255
             # in Cityscapes dataset, all disp samples are tiff files, in which are raw disp
             elif self.modality == 'disp' or self.modality == 'tdisp':
                 disp_real = ano
