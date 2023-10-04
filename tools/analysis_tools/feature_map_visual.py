@@ -11,12 +11,12 @@ import torch.nn as nn
 from mmengine_custom.dataset import Compose
 from mmengine_custom.model import revert_sync_batchnorm
 from mmengine_custom.structures import PixelData
-from mmseg.apis import inference_model, init_model
-from mmseg.structures import SegDataSample
-from mmseg.utils import register_all_modules
-from mmseg.visualization import SegLocalVisualizer
-from mmseg.models import BaseSegmentor
-from mmseg.utils import SampleList
+from mmseg_custom.apis import init_model
+from mmseg_custom.structures import SegDataSample
+from mmseg_custom.utils import register_all_modules
+from mmseg_custom.visualization import SegLocalVisualizer
+from mmseg_custom.models import BaseSegmentor
+from mmseg_custom.utils import SampleList
 
 
 class Recorder:

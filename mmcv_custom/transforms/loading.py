@@ -781,8 +781,8 @@ class LoadCityscapesImageFromFile(BaseTransform):
             ano = ano.astype(np.float32)
             results['img'] = img
             if self.modality == 'normal':  # in Cityscapes dataset, normal img is uint8, multiplied by 255, so must divided
-                # for exp in 2023.9.24 mm training: RGB (0-255) Normal (0-1) only, will be deleted after this exp
-                results['ano'] = ano / 255
+                # for exp in 2023.10.3 mm training: RGB (0-255) Normal (0-1) only, will be deleted after this exp
+                results['ano'] = ano
             # in Cityscapes dataset, all disp samples are tiff files, in which are raw disp
             elif self.modality == 'disp' or self.modality == 'tdisp':
                 disp_real = ano
@@ -1059,7 +1059,7 @@ class StackByChannel(BaseTransform):
     def __init__(self, keys=('img', 'ano')) -> None:
         self.keys = keys
 
-    def transform(self, results: dict) -> Optional[dict]:  ## TODO check if it is suitable in transforms
+    def transform(self, results: dict) -> Optional[dict]:
         """Functions to stack image.
 
         Args:

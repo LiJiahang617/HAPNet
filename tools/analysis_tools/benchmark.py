@@ -12,7 +12,7 @@ from mmengine_custom.registry import init_default_scope
 from mmengine_custom.runner import Runner, load_checkpoint
 from mmengine_custom.utils import mkdir_or_exist
 
-from mmseg.registry import MODELS
+from mmseg_custom.registry import MODELS
 
 
 def parse_args():
