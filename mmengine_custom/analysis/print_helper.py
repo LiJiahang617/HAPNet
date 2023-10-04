@@ -42,9 +42,9 @@ def _format_size(x: int, sig_figs: int = 3, hide_zero: bool = False) -> str:
 
     if abs(x) > 1e14:
         return fmt(x / 1e15) + 'P'
-    if abs(x) > 1e11:
+    if abs(x) > 1e12:
         return fmt(x / 1e12) + 'T'
-    if abs(x) > 1e8:
+    if abs(x) > 1e9:
         return fmt(x / 1e9) + 'G'
     if abs(x) > 1e5:
         return fmt(x / 1e6) + 'M'

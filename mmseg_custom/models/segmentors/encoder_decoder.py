@@ -1,5 +1,6 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 from typing import List, Optional
+import inspect
 
 import torch.nn as nn
 import torch.nn.functional as F
@@ -234,7 +235,12 @@ class EncoderDecoder(BaseSegmentor):
             Tensor: Forward output of model without any post-processes.
         """
         x = self.extract_feat(inputs)
-        return self.decode_head.forward(x)
+        sig = inspect.signature(self.decode_head.forward)
+        if 'batch_data_samples' in sig.parameters:
+            return self.decode_head.forward(x, batch_data_samples=data_samples)
+
+        else:
+            return self.decode_head.forward(x)
 
     def slide_inference(self, inputs: Tensor,
                         batch_img_metas: List[dict]) -> Tensor:
