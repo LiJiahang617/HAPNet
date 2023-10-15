@@ -819,6 +819,173 @@ class LoadCityscapesImageFromFile(BaseTransform):
 
 
 @TRANSFORMS.register_module()
+class LoadNYUImageFromFile(BaseTransform):
+    """Load NYU-v2 multimodal images from file.
+       Note:
+    Required Keys:
+
+    - img_path
+    - ano_path
+    Modified Keys:
+
+    - img
+    - ano
+    - img_shape
+    - ori_shape
+
+    Args:
+        to_float32 (bool): Whether to convert the loaded image to a float32
+            numpy array. If set to False, the loaded image is an uint8 array.
+            Defaults to False.
+        color_type (str): The flag argument for :func:`mmcv_custom.imfrombytes`.
+            Defaults to 'color'.
+        imdecode_backend (str): The image decoding backend type. The backend
+            argument for :func:`mmcv_custom.imfrombytes`.
+            See :func:`mmcv_custom.imfrombytes` for details.
+            Defaults to 'cv2'.
+        file_client_args (dict, optional): Arguments to instantiate a
+            FileClient. See :class:`mmengine_custom.fileio.FileClient` for details.
+            Defaults to None. It will be deprecated in future. Please use
+            ``backend_args`` instead.
+            Deprecated in version 2.0.0rc4.
+        ignore_empty (bool): Whether to allow loading empty image or file path
+            not existent. Defaults to False.
+        backend_args (dict, optional): Instantiates the corresponding file
+            backend. It may contain `backend` key to specify the file
+            backend. If it contains, the file backend corresponding to this
+            value will be used and initialized with the remaining values,
+            otherwise the corresponding file backend will be selected
+            based on the prefix of the file path. Defaults to None.
+            New in version 2.0.0rc4.
+    """
+
+    def __init__(self,
+                 to_float32: bool = True,
+                 color_type: str = 'color',
+                 imdecode_backend: str = 'cv2',
+                 file_client_args: Optional[dict] = None,
+                 ignore_empty: bool = False,
+                 *,
+                 backend_args: Optional[dict] = None,
+                 modality: str = 'normal') -> None:
+        self.ignore_empty = ignore_empty
+        self.to_float32 = to_float32
+        self.color_type = color_type
+        self.imdecode_backend = imdecode_backend
+        # add param named modality
+        self.modality = modality
+
+        self.file_client_args: Optional[dict] = None
+        self.backend_args: Optional[dict] = None
+        if file_client_args is not None:
+            warnings.warn(
+                '"file_client_args" will be deprecated in future. '
+                'Please use "backend_args" instead', DeprecationWarning)
+            if backend_args is not None:
+                raise ValueError(
+                    '"file_client_args" and "backend_args" cannot be set '
+                    'at the same time.')
+
+            self.file_client_args = file_client_args.copy()
+        if backend_args is not None:
+            self.backend_args = backend_args.copy()
+
+    def transform(self, results: dict) -> Optional[dict]:
+        """Functions to load Cityscapes image.
+
+        Args:
+            results (dict): Result dict from
+                :class:`mmengine_custom.dataset.BaseDataset`.
+
+        Returns:
+            dict: The dict contains loaded image and meta information.
+        """
+
+        filename = results['img_path']
+        anoname = results['ano_path']
+        try:
+            if self.file_client_args is not None:
+                file_client = fileio.FileClient.infer_client(
+                    self.file_client_args, filename)
+                img_bytes = file_client.get(filename)
+                ano_bytes = file_client.get(anoname)
+            else:
+                img_bytes = fileio.get(
+                    filename, backend_args=self.backend_args)
+                ano_bytes = fileio.get(
+                    anoname, backend_args=self.backend_args)
+            img = mmcv_custom.customfrombytes(
+                img_bytes, flag='unchanged', backend=self.imdecode_backend)
+            if len(img.shape) < 3:
+                img = np.expand_dims(img, -1)
+            elif len(img.shape) > 3:
+                raise ValueError('RGB image has more than 3 dims, but it should not')
+            ano = mmcv_custom.customfrombytes(
+                ano_bytes, flag='color', backend=self.imdecode_backend)
+            if len(ano.shape) < 3 and self.modality != 'depth':
+                ano = np.expand_dims(ano, -1)
+            # in case normal img do not have three dims
+            assert ano.ndim == 3, 'another image must has 3 dims, ' \
+                                                              f'even if depth/disp, but found {ano.ndim} dims'
+        except Exception as e:
+            if self.ignore_empty:
+                return None
+            else:
+                raise e
+        # in some cases, images are not read successfully, the img would be
+        # `None`, refer to https://github.com/open-mmlab/mmpretrain/issues/1427
+        assert img is not None, f'failed to load image: {filename}'
+        assert ano is not None, f'failed to load image: {anoname}'
+        if self.to_float32:
+            img = img.astype(np.float32)
+            ano = ano.astype(np.float32)
+            results['img'] = img / 255
+            if self.modality == 'depth':  # in NYU-Depth v2 dataset, depth img is uint8, 0-255, so must divided
+                results['ano'] = ano / 255
+            # in Cityscapes dataset, all disp samples are tiff files, in which are raw disp
+            elif self.modality == 'HHA':
+                hha_real = ano.astype(np.float32)
+                hha_normalized = hha_real / 255
+                assert hha_normalized.shape[2] == 3, f'found hha has only {hha_normalized.shape[2]} channels, ' \
+                                                     f'but it should not'
+                results['ano'] = hha_normalized
+            else:
+                raise ValueError(f'modality only support normal and disp now, not include {self.modality}!')
+        else:
+            img = img.astype(np.float32)
+            ano = ano.astype(np.float32)
+            results['img'] = img
+            if self.modality == 'depth':  # TODO decide if repeat depth to 3 ch is necessary
+                results['ano'] = ano
+            elif self.modality == 'HHA':
+                results['ano'] = ano
+            else:
+                raise ValueError(f'modality of NYU dataset only support depth, normal'
+                                 f' and hha now, not include {self.modality}!')
+
+
+        results['img_shape'] = img.shape[:2]
+        results['ano_shape'] = ano.shape
+        results['ori_shape'] = img.shape[:2]
+        return results
+
+    def __repr__(self):
+        repr_str = (f'{self.__class__.__name__}('
+                    f'ignore_empty={self.ignore_empty}, '
+                    f'to_float32={self.to_float32}, '
+                    f"color_type='{self.color_type}', "
+                    f"modality='{self.modality}', "
+                    f"imdecode_backend='{self.imdecode_backend}', ")
+
+        if self.file_client_args is not None:
+            repr_str += f'file_client_args={self.file_client_args})'
+        else:
+            repr_str += f'backend_args={self.backend_args})'
+
+        return repr_str
+
+
+@TRANSFORMS.register_module()
 class LoadAnnotations(BaseTransform):
     """Load and process the ``instances`` and ``seg_map`` annotation provided
     by dataset.

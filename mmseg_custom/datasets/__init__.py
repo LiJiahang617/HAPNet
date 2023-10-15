@@ -8,6 +8,7 @@ from .mmcarla import MMCarlaDataset
 from .mmkitti import MMKittiDataset
 from . mmorfd import MMOrfdDataset
 from .mmcityscapes import MMCityscapesDataset
+from  .mmnyudataset import MMNYUDataset
 # yapf: disable
 from .transforms import (CLAHE, AdjustGamma, BioMedical3DPad,
                          BioMedical3DRandomCrop, BioMedical3DRandomFlip,
@@ -33,6 +34,6 @@ __all__ = [
     'ResizeShortestEdge',
     'BioMedicalGaussianNoise', 'BioMedicalGaussianBlur',
     'BioMedicalRandomGamma', 'BioMedical3DPad', 'RandomRotFlip',
-    'CarlaDataset', 'MMCarlaDataset',
+    'CarlaDataset', 'MMCarlaDataset', 'MMNYUDataset',
     'MMKittiDataset', 'MMOrfdDataset', 'MMCityscapesDataset'
 ]

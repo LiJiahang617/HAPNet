@@ -2,6 +2,7 @@
 from .formatting import (PackSegInputs, PackMultimodalSegInputs)
 from .loading import (LoadAnnotations, LoadBiomedicalAnnotation, LoadCarlaAnnotations,
                       LoadKittiAnnotations, LoadOrfdAnnotations, LoadCityroadAnnotations,
+                      LoadNYUAnnotations,
                       LoadBiomedicalData, LoadBiomedicalImageFromFile,
                       LoadImageFromNDArray, LoadCityscapesAnnotations)
 # yapf: disable
@@ -22,6 +23,6 @@ __all__ = [
     'ResizeToMultiple', 'LoadImageFromNDArray', 'LoadBiomedicalImageFromFile',
     'LoadBiomedicalAnnotation', 'LoadBiomedicalData', 'GenerateEdge', 'LoadCityroadAnnotations',
     'ResizeShortestEdge', 'BioMedicalGaussianNoise', 'BioMedicalGaussianBlur',
-    'BioMedical3DRandomFlip', 'BioMedicalRandomGamma', 'BioMedical3DPad',
+    'BioMedical3DRandomFlip', 'BioMedicalRandomGamma', 'BioMedical3DPad', 'LoadNYUAnnotations',
     'RandomRotFlip', 'LoadKittiAnnotations', 'LoadOrfdAnnotations', 'LoadCityscapesAnnotations'
 ]
