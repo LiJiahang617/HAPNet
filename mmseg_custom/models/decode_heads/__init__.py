@@ -4,8 +4,9 @@ from .maskformer_head import MaskFormerHead
 from .roadformer_head import RoadFormerHead
 from .allmlp_head import AllmlpHead
 from .ham_head import LightHamHead
+from .mask2former_head import Mask2FormerHead
 
 __all__ = [
-    'BaseDecodeHead', 'MaskFormerHead',
+    'BaseDecodeHead', 'MaskFormerHead', 'Mask2FormerHead',
     'RoadFormerHead', 'AllmlpHead', 'LightHamHead'
 ]

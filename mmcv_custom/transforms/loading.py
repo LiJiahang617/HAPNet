@@ -118,6 +118,7 @@ class LoadImageFromFile(BaseTransform):
             results['ori_shape'] = img.shape[:2]
         else:
             results['img'] = img
+            print('23333')
             results['img_shape'] = img.shape[:2]
             results['ori_shape'] = img.shape[:2]
         return results
