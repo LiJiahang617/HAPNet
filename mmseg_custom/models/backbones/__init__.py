@@ -5,8 +5,9 @@ from .twin_mit import TwinMixVisionTransformer
 from .twin_mscan import TwinMSCAN
 from .mit import MixVisionTransformer
 from .mscan import MSCAN
+from .share_swin import ShareSwinTransformer
 
 __all__ = [
     'SwinTransformer', 'TwinSwinTransformer', 'TwinMixVisionTransformer',
-    'TwinMSCAN', 'MixVisionTransformer', 'MSCAN'
+    'TwinMSCAN', 'MixVisionTransformer', 'MSCAN', 'ShareSwinTransformer'
 ]

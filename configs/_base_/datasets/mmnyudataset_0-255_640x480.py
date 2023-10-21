@@ -5,7 +5,7 @@ sample_scale = (640, 480)
 
 train_pipeline = [
     # modality value must be modified
-    dict(type='LoadNYUImageFromFile', to_float32=False, modality='depth'),
+    dict(type='LoadNYUImageFromFile', to_float32=False, modality='HHA'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(type='LoadNYUAnnotations', reduce_zero_label=True),
     dict(
@@ -19,7 +19,7 @@ train_pipeline = [
 ]
 val_pipeline = [
     # modality value must be modified
-    dict(type='LoadNYUImageFromFile', to_float32=False, modality='depth'),
+    dict(type='LoadNYUImageFromFile', to_float32=False, modality='HHA'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(
         type='Resize',
@@ -31,14 +31,14 @@ val_pipeline = [
 ]
 test_pipeline = [
     # modality value must be modified
-    dict(type='LoadNYUImageFromFile', to_float32=False, modality='depth'),
+    dict(type='LoadNYUImageFromFile', to_float32=False, modality='HHA'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(type='Resize', scale=sample_scale, keep_ratio=True),
     dict(type='LoadNYUAnnotations', reduce_zero_label=True),
     dict(type='PackSegInputs')
 ]
 train_dataloader = dict(
-    batch_size=2,
+    batch_size=3,
     num_workers=16,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -47,8 +47,8 @@ train_dataloader = dict(
         data_root=data_root,
         reduce_zero_label=True,
         # have to modify next 2 properties at the same time
-        modality='depth',
-        ano_suffix='.png',
+        modality='HHA',
+        ano_suffix='.jpg',
         data_prefix=dict(
             img_path='images/train',
             depth_path='depth/train',
@@ -65,8 +65,8 @@ val_dataloader = dict(
         data_root=data_root,
         reduce_zero_label=True,
         # have to modify next 2 properties at the same time
-        modality='depth',
-        ano_suffix='.png',
+        modality='HHA',
+        ano_suffix='.jpg',
         data_prefix=dict(
             img_path='images/test',
             depth_path='depth/test',
@@ -83,8 +83,8 @@ test_dataloader = dict(
         data_root=data_root,
         reduce_zero_label=True,
         # have to modify next 2 properties at the same time
-        modality='depth',
-        ano_suffix='.png',
+        modality='HHA',
+        ano_suffix='.jpg',
         data_prefix=dict(
             img_path='images/test',
             depth_path='depth/test',

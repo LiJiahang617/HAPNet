@@ -943,7 +943,6 @@ class LoadNYUImageFromFile(BaseTransform):
             results['img'] = img / 255
             if self.modality == 'depth':  # in NYU-Depth v2 dataset, depth img is uint8, 0-255, so must divided
                 results['ano'] = ano / 255
-            # in Cityscapes dataset, all disp samples are tiff files, in which are raw disp
             elif self.modality == 'HHA':
                 hha_real = ano.astype(np.float32)
                 hha_normalized = hha_real / 255
