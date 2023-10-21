@@ -337,7 +337,7 @@ class OverlapPatchEmbed(BaseModule):
 
 @MODELS.register_module()
 class TwinMSCAN(BaseModule):
-    """SegNeXt Multi-Scale Convolutional Attention Network (MCSAN) backbone.
+    """Multimodal SegNeXt Multi-Scale Convolutional Attention Network (MCSAN) backbone.
 
     This backbone is the implementation of `SegNeXt: Rethinking
     Convolutional Attention Design for Semantic
