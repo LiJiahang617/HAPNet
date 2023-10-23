@@ -1,45 +1,33 @@
 _base_ = [
-'../_base_/datasets/mmnyudataset_0-1_640x480.py'
+'../_base_/datasets/mmnyudataset_0-255_640x480.py'
 ]
 # 3090 batchsize = 1
-pretrained = 'https://download.openmmlab.com/mmsegmentation/v0.5/pretrain/swin/swin_base_patch4_window12_384_20220317-55b0104a.pth'  # noqa
+pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-base_3rdparty_in21k_20220301-262fd037.pth'
 
 crop_size = (480, 640) # h, w
 data_preprocessor = dict(
     type='SegDataPreProcessor',
-    mean=[0.485, 0.456, 0.406, 0, 0, 0], # depth images in NYU has 3 channels
-    std=[0.229, 0.224, 0.225, 1, 1, 1],
+    mean=[123.675, 116.28, 103.53, 0, 0, 0], # because inputs has 6 channels, for two modalities are stacked by channels
+    std=[58.395, 57.12, 57.375, 1, 1, 1],
     bgr_to_rgb=True,
     pad_val=0,
     seg_pad_val=255,
     size=crop_size)
 num_classes = 40
 
-depths = [2, 2, 18, 2]
 model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
     backbone=dict(
-        type='TwinSwinTransformer',
-        pretrain_img_size=384,
-        # normal has 3 channels, but depth, tdisp, disp have 1 channels,
-        # not sure if it is suitable to force them to have 3 uniformly.
-        in_channels=3,
-        embed_dims=128,
-        depths=depths,
-        num_heads=[4, 8, 16, 32],
-        window_size=12,
-        mlp_ratio=4,
-        qkv_bias=True,
-        qk_scale=None,
-        drop_rate=0.,
-        attn_drop_rate=0.,
-        drop_path_rate=0.3,
-        patch_norm=True,
-        out_indices=(0, 1, 2, 3),
-        with_cp=False,
-        frozen_stages=-1,
-        init_cfg=dict(type='Pretrained', checkpoint=pretrained)),
+        type='mmpretrain_custom.ShareConvNeXt',
+        arch='base',
+        out_indices=[0, 1, 2, 3],
+        drop_path_rate=0.4,
+        layer_scale_init_value=1.0,
+        gap_before_final_norm=False,
+        init_cfg=dict(
+            type='Pretrained', checkpoint=pretrained,
+            prefix='backbone.')),
     decode_head=dict(
         type='RoadFormerHead',
         in_channels=[256, 512, 1024, 2048], # modified here
@@ -150,53 +138,13 @@ model = dict(
     train_cfg=dict(),
     test_cfg=dict(mode='whole'))
 
-# set all layers in backbone to lr_mult=0.1
-# set all norm layers, position_embeding,
-# query_embeding, level_embeding to decay_multi=0.0
-backbone_norm_multi = dict(lr_mult=0.1, decay_mult=0.0)
-backbone_embed_multi = dict(lr_mult=0.1, decay_mult=0.0)
-embed_multi = dict(lr_mult=1.0, decay_mult=0.0)
-custom_keys = {
-    'backbone': dict(lr_mult=0.1, decay_mult=1.0),
-    'backbone.patch_embed_x.norm': backbone_norm_multi,
-    'backbone.patch_embed_y.norm': backbone_norm_multi,
-    'backbone.norm': backbone_norm_multi,
-    'absolute_pos_embed': backbone_embed_multi,
-    'relative_position_bias_table': backbone_embed_multi,
-    'query_embed': embed_multi,
-    'query_feat': embed_multi,
-    'level_embed': embed_multi
-}
-# for RGB encoder
-custom_keys.update({
-    f'backbone.stages_x.{stage_id}.blocks.{block_id}.norm': backbone_norm_multi
-    for stage_id, num_blocks in enumerate(depths)
-    for block_id in range(num_blocks)
-})
-# for another encoder
-custom_keys.update({
-    f'backbone.stages_y.{stage_id}.blocks.{block_id}.norm': backbone_norm_multi
-    for stage_id, num_blocks in enumerate(depths)
-    for block_id in range(num_blocks)
-})
-# for RGB encoder
-custom_keys.update({
-    f'backbone.stages_x.{stage_id}.downsample.norm': backbone_norm_multi
-    for stage_id in range(len(depths) - 1)
-})
-# for another encoder
-custom_keys.update({
-    f'backbone.stages_y.{stage_id}.downsample.norm': backbone_norm_multi
-    for stage_id in range(len(depths) - 1)
-})
 # optimizer
 optimizer = dict(
     type='AdamW', lr=0.0001, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
-    clip_grad=dict(max_norm=0.01, norm_type=2),
-    paramwise_cfg=dict(custom_keys=custom_keys, norm_decay_mult=0.0))
+    clip_grad=dict(max_norm=5.0))
 
 # learning policy
 param_scheduler = [
@@ -224,7 +172,7 @@ default_hooks = dict(
         type='CheckpointHook', by_epoch=True, interval=100,
         save_best='mIoU'),
     sampler_seed=dict(type='DistSamplerSeedHook'),
-    visualization=dict(type='SegVisualizationHook', draw=False))
+    visualization=dict(type='SegVisualizationHook', interval=1, draw=False))
 
 # Runtime configs
 default_scope = 'mmseg_custom'
@@ -234,7 +182,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                dict(type='WandbVisBackend', init_kwargs=dict(project="RoadFormer_nyu-480x640", name="swin-b_0-1_hha_norm")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="RoadFormer_nyu-480x640", name="shareconvnext-b_0-255_hha-3ch_norm")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
