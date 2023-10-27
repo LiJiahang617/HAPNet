@@ -1,7 +1,7 @@
 _base_ = [
-'../_base_/datasets/mmnyudataset_0-1_640x480.py'
+'../_base_/datasets/mmmf_0-1_640x480.py'
 ]
-# 3090 batchsize = 1
+
 pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-base_3rdparty_in21k_20220301-262fd037.pth'
 
 crop_size = (480, 640) # h, w
@@ -13,13 +13,13 @@ data_preprocessor = dict(
     pad_val=0,
     seg_pad_val=255,
     size=crop_size)
-num_classes = 40
+num_classes = 8
 
 model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
     backbone=dict(
-        type='mmpretrain_custom.ShareConvNeXt',
+        type='mmpretrain_custom.TwinConvNeXt',
         arch='base',
         out_indices=[0, 1, 2, 3],
         drop_path_rate=0.4,
@@ -30,7 +30,7 @@ model = dict(
             prefix='backbone.')),
     decode_head=dict(
         type='RoadFormerHead',
-        in_channels=[256, 512, 1024, 2048], # modified here
+        in_channels=[256, 512, 1024, 2048],  # modified here
         strides=[4, 8, 16, 32],
         feat_channels=256,
         out_channels=256,
@@ -182,7 +182,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="RoadFormer_nyu-480x640", name="shareconvnext-b_0-1_hha_norm")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="RoadFormer_mf-480x640", name="convnext-b_0-1_thermal_norm")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')

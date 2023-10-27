@@ -10,6 +10,7 @@ from . mmorfd import MMOrfdDataset
 from .mmcityscapes import MMCityscapesDataset
 from  .mmnyudataset import MMNYUDataset
 from .nyudataset import NYUDataset
+from .mmmfdataset import MMMFDataset
 
 # yapf: disable
 from .transforms import (CLAHE, AdjustGamma, BioMedical3DPad,
@@ -26,7 +27,7 @@ from .transforms import (CLAHE, AdjustGamma, BioMedical3DPad,
 # yapf: enable
 __all__ = [
     'BaseSegDataset', 'BioMedical3DRandomCrop', 'BioMedical3DRandomFlip',
-    'CityscapesDataset', 'NYUDataset',
+    'CityscapesDataset', 'NYUDataset', 'MMMFDataset',
     'MultiImageMixDataset',
     'LoadAnnotations', 'RandomCrop', 'SegRescale', 'PhotoMetricDistortion',
     'RandomRotate', 'AdjustGamma', 'CLAHE', 'Rerange', 'RGB2Gray',

@@ -3,7 +3,7 @@ from .base import BaseTransform
 from .builder import TRANSFORMS
 from .loading import LoadAnnotations, LoadImageFromFile, LoadMultimodalImageFromFile, \
                      StackByChannel, LoadKittiImageFromFile, LoadOrfdImageFromFile, \
-                     LoadCityscapesImageFromFile
+                     LoadCityscapesImageFromFile, LoadNYUImageFromFile, LoadMFImageFromFile
 from .processing import (CenterCrop, MultiScaleFlipAug, Normalize, Pad,
                          RandomChoiceResize, RandomFlip, RandomGrayscale,
                          RandomResize, Resize, TestTimeAug)
@@ -20,7 +20,7 @@ except ImportError:
         'Normalize', 'Resize', 'Pad', 'RandomFlip', 'RandomChoiceResize',
         'CenterCrop', 'RandomGrayscale', 'MultiScaleFlipAug', 'RandomResize',
         'RandomApply', 'TestTimeAug', 'LoadCityscapesImageFromFile',
-        'LoadOrfdImageFromFile',
+        'LoadOrfdImageFromFile', 'LoadNYUImageFromFile', 'LoadMFImageFromFile'
     ]
 else:
     from .formatting import ImageToTensor, ToTensor, to_tensor
@@ -32,5 +32,5 @@ else:
         'RandomFlip', 'RandomChoiceResize', 'CenterCrop', 'RandomGrayscale',
         'MultiScaleFlipAug', 'RandomResize', 'RandomApply', 'TestTimeAug',
         'StackByChannel', 'LoadKittiImageFromFile', 'LoadMultimodalImageFromFile',
-        'LoadCityscapesImageFromFile', 'LoadOrfdImageFromFile'
+        'LoadCityscapesImageFromFile', 'LoadOrfdImageFromFile', 'LoadNYUImageFromFile', 'LoadMFImageFromFile'
     ]
