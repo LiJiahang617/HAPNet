@@ -7,7 +7,7 @@ train_pipeline = [
     # modality value must be modified
     dict(type='LoadMFImageFromFile', to_float32=False, modality='thermal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
-    dict(type='LoadAnnotations', reduce_zero_label=True),
+    dict(type='LoadAnnotations', reduce_zero_label=False),
     dict(
         type='RandomChoiceResize',
         scales=[int(640 * x * 0.1) for x in range(5, 20)],
@@ -26,7 +26,7 @@ val_pipeline = [
         scale=sample_scale, keep_ratio=True),  # Note: w, h instead of h, w
     # add loading annotation after ``Resize`` because ground truth
     # does not need to do resize data transform
-    dict(type='LoadAnnotations', reduce_zero_label=True),
+    dict(type='LoadAnnotations', reduce_zero_label=False),
     dict(type='PackSegInputs')
 ]
 test_pipeline = [
@@ -34,7 +34,7 @@ test_pipeline = [
     dict(type='LoadMFImageFromFile', to_float32=False, modality='thermal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(type='Resize', scale=sample_scale, keep_ratio=True),
-    dict(type='LoadAnnotations', reduce_zero_label=True),
+    dict(type='LoadAnnotations', reduce_zero_label=False),
     dict(type='PackSegInputs')
 ]
 train_dataloader = dict(
@@ -65,9 +65,9 @@ val_dataloader = dict(
         # have to modify next 2 properties at the same time
         modality='thermal',
         data_prefix=dict(
-            img_path='images/test',
-            thermal_path='thermal/test',
-            seg_map_path='labels/test'),
+            img_path='images/val',
+            thermal_path='thermal/val',
+            seg_map_path='labels/val'),
         pipeline=val_pipeline))
 test_dataloader = dict(
     batch_size=1,

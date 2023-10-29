@@ -18,8 +18,8 @@ class MMMFDataset(BaseSegDataset):
     for MMCityscapes dataset.
     """
     METAINFO = dict(
-        classes=('car', 'person', 'bike', 'curve', 'car stop', 'guardrail', 'color cone', 'bump'),
-        palette=[[64, 0, 128], [64, 64, 0], [0, 128, 192], [0, 0, 192], [128, 128, 0],
+        classes=('unlabeled', 'car', 'person', 'bike', 'curve', 'car stop', 'guardrail', 'color cone', 'bump'),
+        palette=[[0, 0, 0], [64, 0, 128], [64, 64, 0], [0, 128, 192], [0, 0, 192], [128, 128, 0],
                  [64, 64, 128], [192, 128, 128], [192, 64, 0]])
 
     def __init__(self,

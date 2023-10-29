@@ -13,7 +13,7 @@ data_preprocessor = dict(
     pad_val=0,
     seg_pad_val=255,
     size=crop_size)
-num_classes = 8
+num_classes = 9
 
 model = dict(
     type='EncoderDecoder',
@@ -182,7 +182,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="RoadFormer_mf-480x640", name="convnext-b_0-255_thermal_norm")),
+                dict(type='WandbVisBackend', init_kwargs=dict(project="RoadFormer_mf-480x640", name="convnext-b_0-255_thermal_norm")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
