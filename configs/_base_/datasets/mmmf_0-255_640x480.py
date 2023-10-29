@@ -45,7 +45,7 @@ train_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        reduce_zero_label=True,
+        reduce_zero_label=False,
         # have to modify next 2 properties at the same time
         modality='thermal',
         data_prefix=dict(
@@ -61,7 +61,7 @@ val_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        reduce_zero_label=True,
+        reduce_zero_label=False,
         # have to modify next 2 properties at the same time
         modality='thermal',
         data_prefix=dict(
@@ -77,7 +77,7 @@ test_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        reduce_zero_label=True,
+        reduce_zero_label=False,
         # have to modify next 2 properties at the same time
         modality='thermal',
         data_prefix=dict(
