@@ -345,7 +345,7 @@ class MaskFormerHead(AnchorFreeHead):
             batch_gt_instances for _ in range(num_dec_layers)
         ]
         img_metas_list = [batch_img_metas for _ in range(num_dec_layers)]
-        losses_cls, losses_mask, losses_dice = multi_apply(
+        losses_cls, losses_mask, losses_dice = multi_apply( # 将第一个位置的loss计算方法应用到所有后续位置的超参数中
             self._loss_by_feat_single, all_cls_scores, all_mask_preds,
             batch_gt_instances_list, img_metas_list)
 

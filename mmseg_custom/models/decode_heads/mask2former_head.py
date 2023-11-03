@@ -148,8 +148,8 @@ class Mask2FormerHead(MMDET_Mask2FormerHead):
         ]
 
         all_cls_scores, all_mask_preds = self(x, batch_data_samples)
-        mask_cls_results = all_cls_scores[-1]
-        mask_pred_results = all_mask_preds[-1]
+        mask_cls_results = all_cls_scores[-1] # Nx(k+1)
+        mask_pred_results = all_mask_preds[-1] # NxHxW
         if 'pad_shape' in batch_img_metas[0]:
             size = batch_img_metas[0]['pad_shape']
         else:

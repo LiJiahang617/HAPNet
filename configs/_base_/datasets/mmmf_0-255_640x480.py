@@ -65,9 +65,9 @@ val_dataloader = dict(
         # have to modify next 2 properties at the same time
         modality='thermal',
         data_prefix=dict(
-            img_path='images/val',
-            thermal_path='thermal/val',
-            seg_map_path='labels/val'),
+            img_path='images/test',
+            thermal_path='thermal/test',
+            seg_map_path='labels/test'),
         pipeline=val_pipeline))
 test_dataloader = dict(
     batch_size=1,
