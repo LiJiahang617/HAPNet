@@ -556,7 +556,7 @@ class LoadOrfdImageFromFile(BaseTransform):
             self.backend_args = backend_args.copy()
 
     def transform(self, results: dict) -> Optional[dict]:
-        """Functions to load kitti image.
+        """Functions to load Orfd image.
 
         Args:
             results (dict): Result dict from
@@ -644,7 +644,7 @@ class LoadOrfdImageFromFile(BaseTransform):
 class LoadCityscapesImageFromFile(BaseTransform):
     """Load Cityscapes multimodal images from file.
        Note:
-           it is used for kitti dataset, if you change the scene, you should
+           it is used for Cityscapes dataset, if you change the scene, you should
            modify some options in it.
     Required Keys:
 

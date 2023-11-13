@@ -37,8 +37,8 @@ test_pipeline = [
     dict(type='PackSegInputs')
 ]
 train_dataloader = dict(
-    batch_size=5,
-    num_workers=40,
+    batch_size=2,
+    num_workers=16,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
