@@ -2,7 +2,6 @@ from typing import List, Tuple, Union, Any
 
 import torch
 import torch.nn as nn
-import torchvision.models as models
 import torch.nn.functional as F
 from torch import Tensor
 
@@ -76,7 +75,7 @@ class Conv2d(BaseModule):
 
 
 @MODELS.register_module()
-class UpsampleGenerator(BaseModule):
+class RGBXGenerator(BaseModule):
     def __init__(self,
                  in_channels: List[int],
                  init_cfg=dict(
@@ -90,7 +89,9 @@ class UpsampleGenerator(BaseModule):
         self.fake_X_conv2 = ConvBnrelu2d(in_channels[-3], in_channels[-3])
         self.fake_X_Transupsample3 = TransConvBnLeakyRelu2d(in_channels[-3], in_channels[-4])
         self.fake_X_conv3 = ConvBnrelu2d(in_channels[-4], in_channels[-4])
-        self.fake_X_Transconv4 = TransConvBnLeakyRelu2d(in_channels[-4], in_channels[-4])
+        self.fake_X_Transupsample4 = TransConvBnLeakyRelu2d(in_channels[-4], in_channels[-4])
+        self.fake_X_conv4 = ConvBnrelu2d(in_channels[-4], in_channels[-4])
+        self.fake_X_Transupsample5 = TransConvBnLeakyRelu2d(in_channels[-4], in_channels[-4])
         self.fake_X_last = Conv2d(in_channels[-4], 3)
         # fake RGB generator
         self.fake_RGB_Transupsample1 = TransConvBnLeakyRelu2d(in_channels[-1], in_channels[-2])
@@ -99,7 +100,9 @@ class UpsampleGenerator(BaseModule):
         self.fake_RGB_conv2 = ConvBnrelu2d(in_channels[-3], in_channels[-3])
         self.fake_RGB_Transupsample3 = TransConvBnLeakyRelu2d(in_channels[-3], in_channels[-4])
         self.fake_RGB_conv3 = ConvBnrelu2d(in_channels[-4], in_channels[-4])
-        self.fake_RGB_Transconv4 = TransConvBnLeakyRelu2d(in_channels[-4], in_channels[-4])
+        self.fake_RGB_Transupsample4 = TransConvBnLeakyRelu2d(in_channels[-4], in_channels[-4])
+        self.fake_RGB_conv4 = ConvBnrelu2d(in_channels[-4], in_channels[-4])
+        self.fake_RGB_Transupsample5 = TransConvBnLeakyRelu2d(in_channels[-4], in_channels[-4])
         self.fake_RGB_last = Conv2d(in_channels[-4], 3)
 
     def forward(self, feats: List[Tensor]):
@@ -117,7 +120,9 @@ class UpsampleGenerator(BaseModule):
         RGB_feats = self.fake_X_conv2(RGB_feats+feats_RGB[-3])
         RGB_feats = self.fake_X_Transupsample3(RGB_feats)
         RGB_feats = self.fake_X_conv3(RGB_feats+feats_RGB[-4])
-        RGB_feats = self.fake_X_Transconv4(RGB_feats)
+        RGB_feats = self.fake_X_Transupsample4(RGB_feats)
+        RGB_feats = self.fake_X_conv4(RGB_feats)
+        RGB_feats = self.fake_X_Transupsample5(RGB_feats)
         RGB_feats = self.fake_X_last(RGB_feats)
         fake_X = torch.sigmoid(RGB_feats)
         # image translation X-->fake RGB
@@ -127,10 +132,12 @@ class UpsampleGenerator(BaseModule):
         X_feats = self.fake_RGB_conv2(X_feats+feats_X[-3])
         X_feats = self.fake_RGB_Transupsample3(X_feats)
         X_feats = self.fake_RGB_conv3(X_feats+feats_X[-4])
-        X_feats = self.fake_RGB_Transconv4(X_feats)
+        X_feats = self.fake_RGB_Transupsample4(X_feats)
+        X_feats = self.fake_RGB_conv4(X_feats)
+        X_feats =self.fake_RGB_Transupsample5(X_feats)
         X_feats = self.fake_RGB_last(X_feats)
         fake_RGB = torch.sigmoid(X_feats)
 
-        output = dict(fake_X = fake_X, fake_RGB = fake_RGB)
+        output = dict(fake_X=fake_X, fake_RGB=fake_RGB)
 
         return output

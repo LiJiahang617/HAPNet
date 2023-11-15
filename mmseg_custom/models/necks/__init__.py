@@ -5,9 +5,9 @@ from .ic_neck import ICNeck
 from .jpu import JPU
 from .mla_neck import MLANeck
 from .multilevel_neck import MultiLevelNeck
-from .generator import UpsampleGenerator
+from .rgbx_generator import RGBXGenerator
 
 __all__ = [
     'FPN', 'MultiLevelNeck', 'MLANeck', 'ICNeck', 'JPU', 'Feature2Pyramid',
-    'UpsampleGenerator'
+    'RGBXGenerator'
 ]

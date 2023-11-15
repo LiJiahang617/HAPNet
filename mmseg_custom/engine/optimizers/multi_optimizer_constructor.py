@@ -149,7 +149,8 @@ class MultiOptimWrapperConstructor:
             module = module.module
         if isinstance(self.constructors, dict):
             for key, constructor in self.constructors.items():
-                module_names = self.modules[key] if self.modules else key
+                # 需要在config中指定key为main_head才能实现
+                module_names = self.modules[key] if self.modules else key # 不在cfg中指定modules的话直接用key
                 if (isinstance(module_names, str)
                         and module_names in module._modules):
                     optimizers[key] = constructor(

@@ -71,7 +71,7 @@ def generation_init_weights(module, init_type='normal', init_gain=0.02):
 
 
 @MODELS.register_module()
-class PatchDiscriminator(BaseDecodeHead):
+class PatchDiscriminator(BaseModule):
     """A PatchGAN discriminator.
 
     Args:
@@ -89,7 +89,7 @@ class PatchDiscriminator(BaseDecodeHead):
     """
 
     def __init__(self,
-                 in_channels: int,
+                 in_channels: int = 6,
                  base_channels: int = 64,
                  num_conv: int = 3,
                  norm_cfg: dict = dict(type='BN'),

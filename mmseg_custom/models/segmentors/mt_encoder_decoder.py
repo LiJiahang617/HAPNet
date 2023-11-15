@@ -8,7 +8,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
-from mmengine_custom import MessageHub
 from mmengine_custom.model import BaseModel, is_model_wrapper
 
 from mmseg_custom.registry import MODELS
@@ -31,6 +30,14 @@ def set_requires_grad(nets, requires_grad=False):
         if net is not None:
             for param in net.parameters():
                 param.requires_grad = requires_grad
+
+
+class CustomModule(nn.Module):
+    # 将已有实例封装到一个容器中，方便优化器分配参数组 这里面的name不影响原来容器中的名称
+    def __init__(self, module_dict):
+        super(CustomModule, self).__init__()
+        for name, module in module_dict.items():
+            self.add_module(name, module)
 
 
 @MODELS.register_module()
@@ -96,10 +103,10 @@ class MTEncoderDecoder(BaseSegmentor):
                  neck: OptConfigType = None,
                  auxiliary_head: OptConfigType = None,
                  generators: OptConfigType = None,
-                 discriminators: OptConfigType = None,
-                 default_domain: str = None,
-                 reachable_domains: List[str] = None,
-                 related_domains: List[str] = None,
+                 discriminator: OptConfigType = None,
+                 default_domain_RGB: str = 'X',
+                 default_domain_X: str = 'RGB',
+                 reachable_domains: List[str] = ['RGB', 'X'],
                  train_cfg: OptConfigType = None,
                  test_cfg: OptConfigType = None,
                  data_preprocessor: OptConfigType = None,
@@ -116,17 +123,23 @@ class MTEncoderDecoder(BaseSegmentor):
             self.neck = MODELS.build(neck)
         if generators is not None:
             self.generators = MODELS.build(generators)
+        # used by discriminators
+        self._default_domain_R = default_domain_RGB
+        self._default_domain_X = default_domain_X
+        self._reachable_domains = reachable_domains
+
         self._init_decode_head(decode_head)
         self._init_auxiliary_head(auxiliary_head) # generator
-        self._init_adversial_discriminator(discriminators) # discriminator
-        self._default_domain = default_domain
-        self._reachable_domains = reachable_domains
-        self._related_domains = related_domains
+        self._init_discriminators(discriminator) # discriminator
 
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
 
         assert self.with_decode_head
+
+        # 使用总模型的子模块构建 CustomModule 实例
+        main_head_module_dict = {'decode_head': self.decode_head, 'generators': self.generators}
+        self.main_head = CustomModule(main_head_module_dict)
 
     def _init_decode_head(self, decode_head: ConfigType) -> None:
         """Initialize ``decode_head``"""
@@ -145,7 +158,7 @@ class MTEncoderDecoder(BaseSegmentor):
             else:
                 self.auxiliary_head = MODELS.build(auxiliary_head)
 
-    def _init_adversial_discriminator(self, discriminator: ConfigType) -> None:
+    def _init_discriminators(self, discriminator: ConfigType) -> None:
         # build domain discriminators
         if discriminator is not None:
             self.discriminators = nn.ModuleDict()
@@ -154,6 +167,10 @@ class MTEncoderDecoder(BaseSegmentor):
         # support no discriminator in testing
         else:
             self.discriminators = None
+
+    def loss(self, inputs: Tensor, data_samples: SampleList) -> dict:
+        """Calculate losses from a batch of inputs and data samples."""
+        pass
 
     def _generator_head_forward_train(self, inputs: List[Tensor],
                                       data_samples: SampleList):
@@ -164,13 +181,13 @@ class MTEncoderDecoder(BaseSegmentor):
         # losses = dict()
         gen_outputs = dict()
         if isinstance(self.generators, nn.ModuleList):
-            for idx, generator in enumerate(self.generator_head):
+            for idx, generator in enumerate(self.generators):
                 # TBD: Any generator head need to re-implement the ``forward`` method
                 output_gen = generator(inputs, data_samples)
                 # losses.update(add_prefix(loss_gen, f'gen_{idx}'))
                 gen_outputs.update(add_prefix(output_gen, f'gen_out_{idx}'))
         else:
-            output_gen = self.generators(inputs, data_samples)
+            output_gen = self.generators(inputs)
             # losses.update(add_prefix(loss_gen, 'gen'))
             gen_outputs.update(add_prefix(output_gen, f'gen_out'))
 
@@ -226,9 +243,9 @@ class MTEncoderDecoder(BaseSegmentor):
         return hasattr(self,
                        'auxiliary_neck') and self.auxiliary_neck is not None
 
-    def loss(self, inputs: Tensor, data_samples: SampleList):
+    def get_main_loss(self, inputs: Tensor, data_samples: SampleList):
         """Calculate losses from a batch of inputs and data samples.
-
+        equal to loss() in encoder-decoder class
         Args:
             inputs (Tensor): Input images.
             data_samples (list[:obj:`SegDataSample`]): The seg data samples.
@@ -439,21 +456,23 @@ class MTEncoderDecoder(BaseSegmentor):
         return seg_pred
 
     # 规定了一次迭代中模型训练流程行为
-    def train_step(self, data, optim_wrapper=None):
+    def train_step(self, data: Union[dict, tuple, list],
+                   optim_wrapper=None) -> Dict[str, torch.Tensor]:
 
         data = self.data_preprocessor(data, True)
         # discriminators, no updates to generator parameters.
         disc_optimizer_wrappers = optim_wrapper['discriminators']
-        # main encoder-decoder and generators
+        # main encoder-decoder 此时优化器早已被构建好，这里只是调用
         main_optimizer_wrapper = optim_wrapper['main_head']
         log_vars = dict()
         with main_optimizer_wrapper.optim_context(self):
             # forward main encoder-decoder and generators
             # generator, no updates to discriminator parameters.
             set_requires_grad(self.discriminators, False)
+            # 这一步需要完成decode_head部分loss计算以及生成器输出计算
             results = self._main_run_forward(data, mode='loss')  # type: ignore
             if isinstance(results, tuple) and len(results) == 2:
-                # 如果返回了两个值，那么第一个是losses_main，第二个是generator_outputs
+                # 如果返回了两个值，那么第一个是losses_main，第二个是gen_outputs:dict
                 losses_main, generator_outputs = results
                 # forward discriminators with main net outputs for generators loss
                 losses_gen = self._get_gen_loss(generator_outputs, data)
@@ -470,13 +489,30 @@ class MTEncoderDecoder(BaseSegmentor):
             else:
                 # 如果只返回了一个值，那么这个值就是losses_main
                 # for DEBUG
-                print(f'self._main_run_forward() only return one output')
+                print(f'WARNING: self._main_run_forward() only return one output！')
                 losses_main = results
                 parsed_losses_main, log_vars_main = self.parse_losses(losses_main)  # type: ignore
                 log_vars.update(log_vars_main)
                 main_optimizer_wrapper.update_params(parsed_losses_main)
 
         return log_vars
+
+    def val_step(self, data: Union[tuple, dict, list]) -> list:
+        """Gets the predictions of given data.
+
+        Calls ``self.data_preprocessor(data, False)`` and
+        ``self(inputs, data_sample, mode='predict')`` in order. Return the
+        predictions which will be passed to evaluator.
+
+        Args:
+            data (dict or tuple or list): Data sampled from dataset.
+
+        Returns:
+            list: The predictions of given data.
+        """
+        data = self.data_preprocessor(data, False)
+        return self._main_run_forward(data, mode='predict')  # type: ignore
+
 
     def _main_run_forward(self, data: Union[dict, tuple, list],
                      mode: str) -> Union[Dict[str, torch.Tensor], list]:
@@ -532,7 +568,7 @@ class MTEncoderDecoder(BaseSegmentor):
             - If ``mode="loss"``, return a dict of tensor.
         """
         if mode == 'loss':
-            return self.loss(inputs, data_samples)
+            return self.get_main_loss(inputs, data_samples)
         elif mode == 'predict':
             return self.predict(inputs, data_samples)
         elif mode == 'tensor':
@@ -567,38 +603,30 @@ class MTEncoderDecoder(BaseSegmentor):
         Returns:
             Tuple: Loss and a dict of log of loss terms.
         """
-        # TODO: 增加相关私有属性
-        target_domain_R = self._default_domain_R
-        target_domain_X = self._default_domain_X
-        source_domain_R = self.get_other_domains(target_domain_R)[0]
-        source_domain_X = self.get_other_domains(target_domain_X)[0]
+        target_domain_R = self._default_domain_R # X
+        target_domain_X = self._default_domain_X # RGB
         losses = dict()
-
+        # 是一个moduledict，其中包含了两个模态的判别器，存放为字典形式
         discriminators = self.get_module(self.discriminators)
-        # GAN loss for the generator_RGB
-        # TODO: 修改outputs字典的键值对，为该训练过程增加必要的字典内容
+        # GAN loss for the rgb branch generator D_X
         real_RGB, real_X = torch.split(image_data['inputs'], (3, 3), dim=1)
-        fake_ab_R = torch.cat((real_RGB,
-                             generators_outputs[f'fake_{target_domain_R}']), 1)
-        # discriminator_RGB forward
-        fake_pred_R = discriminators[target_domain_R](fake_ab_R)
-        losses['loss_gan_g_R'] = F.binary_cross_entropy_with_logits(
-            fake_pred_R, 1. * torch.ones_like(fake_pred_R))
-        # GAN loss for the generator_X
-        fake_ab_X = torch.cat((real_X,
-                               generators_outputs[f'fake_{target_domain_X}']), 1)
+        fake_ab_X = torch.cat((real_RGB,
+                             generators_outputs[f'gen_out.fake_{target_domain_R}']), 1)
         # discriminator_X forward
-        fake_pred_X = discriminators[target_domain_X](fake_ab_X)
+        fake_pred_X = discriminators[target_domain_R](fake_ab_X)
         losses['loss_gan_g_X'] = F.binary_cross_entropy_with_logits(
             fake_pred_X, 1. * torch.ones_like(fake_pred_X))
+        # GAN loss for the X branch generator D_RGB
+        fake_ab_R = torch.cat((real_X,
+                               generators_outputs[f'gen_out.fake_{target_domain_X}']), 1)
+        # discriminator_R forward
+        fake_pred_R = discriminators[target_domain_X](fake_ab_R)
+        losses['loss_gan_g_R'] = F.binary_cross_entropy_with_logits(
+            fake_pred_R, 1. * torch.ones_like(fake_pred_R))
 
         return losses
 
-    def get_other_domains(self, domain):
-        """get other domains."""
-        return list(set(self._related_domains) - set([domain]))
-
-    def _get_disc_loss(self, outputs, image_data):
+    def _get_disc_loss(self, generators_outputs, image_data):
         """Get the loss of discriminator.
 
         Args:
@@ -615,11 +643,9 @@ class MTEncoderDecoder(BaseSegmentor):
         real_RGB, real_X = torch.split(image_data['inputs'], (3, 3), dim=1)
         target_domain_R = self._default_domain_R
         target_domain_X = self._default_domain_X
-        source_domain_R = self.get_other_domains(target_domain_R)[0]
-        source_domain_X = self.get_other_domains(target_domain_X)[0]
         # GAN loss for the disciriminator_X _R represents RGB branch
         fake_ab_X = torch.cat((real_RGB,
-                             outputs[f'fake_{target_domain_R}']), 1)
+                             generators_outputs[f'gen_out.fake_{target_domain_R}']), 1)
         fake_pred_X = discriminators[target_domain_R](fake_ab_X.detach())
         losses['loss_gan_d_X_fake'] = F.binary_cross_entropy_with_logits(
             fake_pred_X, 0. * torch.ones_like(fake_pred_X))
@@ -630,7 +656,7 @@ class MTEncoderDecoder(BaseSegmentor):
             real_pred_X, 1. * torch.ones_like(real_pred_X))
         # GAN loss for the disciriminator_RGB
         fake_ab_R = torch.cat((real_X,
-                               outputs[f'fake_{target_domain_X}']), 1)
+                               generators_outputs[f'gen_out.fake_{target_domain_X}']), 1)
         fake_pred_R = discriminators[target_domain_X](fake_ab_R.detach())
         losses['loss_gan_d_R_fake'] = F.binary_cross_entropy_with_logits(
             fake_pred_R, 0. * torch.ones_like(fake_pred_R))
