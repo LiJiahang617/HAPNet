@@ -90,3 +90,27 @@ class SegDataSample(BaseDataElement):
     @seg_logits.deleter
     def seg_logits(self) -> None:
         del self._seg_logits
+
+    @property
+    def gen_fake_X(self) -> PixelData:
+        return self._gen_fake_X
+
+    @gen_fake_X.setter
+    def gen_fake_X(self, value: PixelData) -> None:
+        self.set_field(value, '_gen_fake_X', dtype=PixelData)
+
+    @gen_fake_X.deleter
+    def gen_fake_X(self) -> None:
+        del self._gen_fake_X
+
+    @property
+    def gen_fake_RGB(self) -> PixelData:
+        return self._gen_fake_RGB
+
+    @gen_fake_RGB.setter
+    def gen_fake_RGB(self, value: PixelData) -> None:
+        self.set_field(value, '_gen_fake_RGB', dtype=PixelData)
+
+    @gen_fake_RGB.deleter
+    def gen_fake_RGB(self) -> None:
+        del self._gen_fake_RGB

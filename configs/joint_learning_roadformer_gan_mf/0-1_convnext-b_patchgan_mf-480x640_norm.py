@@ -187,7 +187,7 @@ default_hooks = dict(
         type='CheckpointHook', by_epoch=True, interval=100,
         save_best='mIoU'),
     sampler_seed=dict(type='DistSamplerSeedHook'),
-    visualization=dict(type='SegVisualizationHook', interval=1, draw=False))
+    visualization=dict(type='GanVisualizationHook', interval=1, draw=True))
 
 # Runtime configs
 default_scope = 'mmseg_custom'

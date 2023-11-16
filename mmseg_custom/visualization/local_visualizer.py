@@ -1,5 +1,6 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 from typing import Dict, List, Optional
+import cv2
 
 import mmcv_custom
 import numpy as np
@@ -256,3 +257,73 @@ class SegLocalVisualizer(Visualizer):
             mmcv_custom.imwrite(drawn_img, out_file)
         else:
             self.add_image(name, drawn_img, step)
+
+    @master_only
+    def add_rgbxgansample(
+            self,
+            name: str,
+            data_sample: Optional[SegDataSample] = None,
+            draw_fake: bool = True,
+            show: bool = False,
+            wait_time: float = 0,
+            out_file: Optional[str] = None,
+            step: int = 0) -> None:
+        """Draw datasample and save to all backends.
+
+        - If GT and prediction are plotted at the same time, they are
+        displayed in a stitched image where the left image is the
+        ground truth and the right image is the prediction.
+        - If ``show`` is True, all storage backends are ignored, and
+        the images will be displayed in a local window.
+        - If ``out_file`` is specified, the drawn image will be
+        saved to ``out_file``. it is usually used when the display
+        is not available.
+
+        Args:
+            name (str): The image identifier.
+            image (np.ndarray): The image to draw.
+            gt_sample (:obj:`SegDataSample`, optional): GT SegDataSample.
+                Defaults to None.
+            pred_sample (:obj:`SegDataSample`, optional): Prediction
+                SegDataSample. Defaults to None.
+            draw_gt (bool): Whether to draw GT SegDataSample. Default to True.
+            draw_pred (bool): Whether to draw Prediction SegDataSample.
+                Defaults to True.
+            show (bool): Whether to display the drawn image. Default to False.
+            wait_time (float): The interval of show (s). Defaults to 0.
+            out_file (str): Path to output file. Defaults to None.
+            step (int): Global step value to record. Defaults to 0.
+        """
+
+        if all([draw_fake,
+                data_sample is not None,
+                'gen_fake_X' in data_sample,
+                'gen_fake_RGB' in data_sample]):
+
+            fake_rgb_data = data_sample.gen_fake_RGB.cpu().data
+            fake_X_data = data_sample.gen_fake_X.cpu().data
+        else:
+            raise ValueError('add_rgbxgansample func failed!')
+
+        drawn_rgb = fake_rgb_data.cpu().numpy()
+        drawn_rgb = np.transpose(drawn_rgb, (1, 2, 0))
+        drawn_rgb = cv2.cvtColor(drawn_rgb, cv2.COLOR_RGB2BGR)
+        if drawn_rgb.max() <= 1.0:
+            drawn_rgb = (drawn_rgb * 255).astype(np.uint8)
+
+        drawn_X = fake_X_data.cpu().numpy()
+        drawn_X = np.transpose(drawn_X, (1, 2, 0))
+        drawn_X = cv2.cvtColor(drawn_X, cv2.COLOR_RGB2BGR)
+        if drawn_X.max() <= 1.0:
+            drawn_X = (drawn_X * 255).astype(np.uint8)
+
+        if show:
+            self.show(drawn_rgb, win_name=name+'rgb', wait_time=wait_time)
+            self.show(drawn_X, win_name=name + 'X', wait_time=wait_time)
+
+        if out_file is not None:
+            mmcv_custom.imwrite(mmcv_custom.bgr2rgb(drawn_rgb), out_file)
+            mmcv_custom.imwrite(mmcv_custom.bgr2rgb(drawn_X), out_file)
+        else:
+            self.add_image(name+'fake_RGB', drawn_rgb, step)
+            self.add_image(name+'fake_X', drawn_X, step)

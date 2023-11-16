@@ -9,11 +9,14 @@ import torch.nn.functional as F
 from torch import Tensor
 
 from mmengine_custom.model import BaseModel, is_model_wrapper
+from mmengine_custom.structures import PixelData
 
+from mmseg_custom.structures import SegDataSample
 from mmseg_custom.registry import MODELS
 from mmseg_custom.utils import (ForwardResults, ConfigType, OptConfigType, OptMultiConfig,
                                 OptSampleList, SampleList, add_prefix)
 from .base import BaseSegmentor
+from ..utils import resize
 
 
 def set_requires_grad(nets, requires_grad=False):
@@ -201,14 +204,19 @@ class MTEncoderDecoder(BaseSegmentor):
         return x
 
     def encode_decode(self, inputs: Tensor,
-                      batch_img_metas: List[dict]) -> Tensor:
+                      batch_img_metas: List[dict], data_samples) -> Tensor:
         """Encode images with backbone and decode into a semantic segmentation
-        map of the same size as input."""
+        map of the same size as input.
+        customed by Kobe Li, add GAN-generator outputs dict
+        """
         x = self.extract_feat(inputs)
         seg_logits = self.decode_head.predict(x, batch_img_metas,
                                               self.test_cfg)
 
-        return seg_logits
+        # 辅助解码器：generator forward TBD:不要加这块的loss计算，只前向传播
+        gen_outputs = self._generator_head_forward_train(x, data_samples)
+
+        return seg_logits, gen_outputs
 
     def _decode_head_forward_train(self, inputs: List[Tensor],
                                    data_samples: SampleList) -> dict:
@@ -309,9 +317,9 @@ class MTEncoderDecoder(BaseSegmentor):
                     padding_size=[0, 0, 0, 0])
             ] * inputs.shape[0]
 
-        seg_logits = self.inference(inputs, batch_img_metas)
+        seg_logits, gen_outs = self.inference(inputs, batch_img_metas, data_samples)
 
-        return self.postprocess_result(seg_logits, data_samples)
+        return self.postprocess_result(seg_logits, data_samples, gen_outs)
 
     def _forward(self,
                  inputs: Tensor,
@@ -389,7 +397,7 @@ class MTEncoderDecoder(BaseSegmentor):
         return seg_logits
 
     def whole_inference(self, inputs: Tensor,
-                        batch_img_metas: List[dict]) -> Tensor:
+                        batch_img_metas: List[dict], data_samples) -> Tensor:
         """Inference with full image.
 
         Args:
@@ -406,11 +414,11 @@ class MTEncoderDecoder(BaseSegmentor):
                 input image.
         """
 
-        seg_logits = self.encode_decode(inputs, batch_img_metas)
+        seg_logits, gen_outs = self.encode_decode(inputs, batch_img_metas, data_samples)
 
-        return seg_logits
+        return seg_logits, gen_outs
 
-    def inference(self, inputs: Tensor, batch_img_metas: List[dict]) -> Tensor:
+    def inference(self, inputs: Tensor, batch_img_metas: List[dict], data_samples) -> Tensor:
         """Inference with slide/whole style.
 
         Args:
@@ -432,9 +440,9 @@ class MTEncoderDecoder(BaseSegmentor):
         if self.test_cfg.mode == 'slide':
             seg_logit = self.slide_inference(inputs, batch_img_metas)
         else:
-            seg_logit = self.whole_inference(inputs, batch_img_metas)
+            seg_logit, gen_outs = self.whole_inference(inputs, batch_img_metas, data_samples)
 
-        return seg_logit
+        return seg_logit, gen_outs
 
     def aug_test(self, inputs, batch_img_metas, rescale=True):
         """Test with augmentations.
@@ -485,6 +493,8 @@ class MTEncoderDecoder(BaseSegmentor):
                 # optimize
                 losses_disc, log_vars_disc = self._get_disc_loss(generator_outputs, data)
                 disc_optimizer_wrappers.update_params(losses_disc)
+                if 'loss' in log_vars_disc:
+                    log_vars_disc['disc_loss'] = log_vars_disc.pop('loss')
                 log_vars.update(log_vars_disc)
             else:
                 # 如果只返回了一个值，那么这个值就是losses_main
@@ -513,6 +523,17 @@ class MTEncoderDecoder(BaseSegmentor):
         data = self.data_preprocessor(data, False)
         return self._main_run_forward(data, mode='predict')  # type: ignore
 
+    def test_step(self, data: Union[dict, tuple, list]) -> list:
+        """``BaseModel`` implements ``test_step`` the same as ``val_step``.
+
+        Args:
+            data (dict or tuple or list): Data sampled from dataset.
+
+        Returns:
+            list: The predictions of given data.
+        """
+        data = self.data_preprocessor(data, False)
+        return self._main_run_forward(data, mode='predict')  # type: ignore
 
     def _main_run_forward(self, data: Union[dict, tuple, list],
                      mode: str) -> Union[Dict[str, torch.Tensor], list]:
@@ -614,17 +635,17 @@ class MTEncoderDecoder(BaseSegmentor):
                              generators_outputs[f'gen_out.fake_{target_domain_R}']), 1)
         # discriminator_X forward
         fake_pred_X = discriminators[target_domain_R](fake_ab_X)
-        losses['loss_gan_g_X'] = F.binary_cross_entropy_with_logits(
-            fake_pred_X, 1. * torch.ones_like(fake_pred_X))
+        losses['loss_gen_X'] = F.binary_cross_entropy_with_logits(
+            fake_pred_X, 1. * torch.ones_like(fake_pred_X)) * 0.05
         # GAN loss for the X branch generator D_RGB
         fake_ab_R = torch.cat((real_X,
                                generators_outputs[f'gen_out.fake_{target_domain_X}']), 1)
         # discriminator_R forward
         fake_pred_R = discriminators[target_domain_X](fake_ab_R)
-        losses['loss_gan_g_R'] = F.binary_cross_entropy_with_logits(
-            fake_pred_R, 1. * torch.ones_like(fake_pred_R))
+        losses['loss_gen_R'] = F.binary_cross_entropy_with_logits(
+            fake_pred_R, 1. * torch.ones_like(fake_pred_R)) * 0.05
 
-        return losses
+        return add_prefix(losses, 'gan')
 
     def _get_disc_loss(self, generators_outputs, image_data):
         """Get the loss of discriminator.
@@ -647,26 +668,111 @@ class MTEncoderDecoder(BaseSegmentor):
         fake_ab_X = torch.cat((real_RGB,
                              generators_outputs[f'gen_out.fake_{target_domain_R}']), 1)
         fake_pred_X = discriminators[target_domain_R](fake_ab_X.detach())
-        losses['loss_gan_d_X_fake'] = F.binary_cross_entropy_with_logits(
+        losses['loss_disc_X_fake'] = F.binary_cross_entropy_with_logits(
             fake_pred_X, 0. * torch.ones_like(fake_pred_X))
         real_ab_X = torch.cat((real_RGB,
                              real_X), 1)
         real_pred_X = discriminators[target_domain_R](real_ab_X)
-        losses['loss_gan_d_X_real'] = F.binary_cross_entropy_with_logits(
+        losses['loss_disc_X_real'] = F.binary_cross_entropy_with_logits(
             real_pred_X, 1. * torch.ones_like(real_pred_X))
         # GAN loss for the disciriminator_RGB
         fake_ab_R = torch.cat((real_X,
                                generators_outputs[f'gen_out.fake_{target_domain_X}']), 1)
         fake_pred_R = discriminators[target_domain_X](fake_ab_R.detach())
-        losses['loss_gan_d_R_fake'] = F.binary_cross_entropy_with_logits(
+        losses['loss_disc_R_fake'] = F.binary_cross_entropy_with_logits(
             fake_pred_R, 0. * torch.ones_like(fake_pred_R))
         real_ab_R = torch.cat((real_X,
                                real_RGB), 1)
         real_pred_R = discriminators[target_domain_X](real_ab_R)
-        losses['loss_gan_d_R_real'] = F.binary_cross_entropy_with_logits(
+        losses['loss_disc_R_real'] = F.binary_cross_entropy_with_logits(
             real_pred_R, 1. * torch.ones_like(real_pred_R))
 
-        loss_d, log_vars_d = self.parse_losses(losses)
+        loss_d, log_vars_d = self.parse_losses(add_prefix(losses, 'gan'))
         loss_d *= 0.5
 
         return loss_d, log_vars_d
+
+    def postprocess_result(self,
+                           seg_logits: Tensor,
+                           data_samples: OptSampleList = None,
+                           gen_outs = None) -> SampleList:
+        """ Convert results list to `SegDataSample`.
+        Args:
+            seg_logits (Tensor): The segmentation results, seg_logits from
+                model of each input image.
+            data_samples (list[:obj:`SegDataSample`]): The seg data samples.
+                It usually includes information such as `metainfo` and
+                `gt_sem_seg`. Default to None.
+        Returns:
+            list[:obj:`SegDataSample`]: Segmentation results of the
+            input images. Each SegDataSample usually contain:
+
+            - ``pred_sem_seg``(PixelData): Prediction of semantic segmentation.
+            - ``seg_logits``(PixelData): Predicted logits of semantic
+                segmentation before normalization.
+        """
+        batch_size, C, H, W = seg_logits.shape
+        target_domain_R = self._default_domain_R
+        target_domain_X = self._default_domain_X
+
+        if data_samples is None:
+            data_samples = [SegDataSample() for _ in range(batch_size)]
+            only_prediction = True
+        else:
+            only_prediction = False
+
+        for i in range(batch_size):
+            if not only_prediction:
+                img_meta = data_samples[i].metainfo
+                # remove padding area
+                if 'img_padding_size' not in img_meta:
+                    padding_size = img_meta.get('padding_size', [0] * 4)
+                else:
+                    padding_size = img_meta['img_padding_size']
+                padding_left, padding_right, padding_top, padding_bottom =\
+                    padding_size
+                # i_seg_logits shape is 1, C, H, W after remove padding
+                i_seg_logits = seg_logits[i:i + 1, :,
+                                          padding_top:H - padding_bottom,
+                                          padding_left:W - padding_right]
+
+                flip = img_meta.get('flip', None)
+                if flip:
+                    flip_direction = img_meta.get('flip_direction', None)
+                    assert flip_direction in ['horizontal', 'vertical']
+                    if flip_direction == 'horizontal':
+                        i_seg_logits = i_seg_logits.flip(dims=(3, ))
+                    else:
+                        i_seg_logits = i_seg_logits.flip(dims=(2, ))
+
+                # resize as original shape
+                i_seg_logits = resize(
+                    i_seg_logits,
+                    size=img_meta['ori_shape'],
+                    mode='bilinear',
+                    align_corners=self.align_corners,
+                    warning=False).squeeze(0)
+            else:
+                i_seg_logits = seg_logits[i]
+
+            if C > 1:
+                i_seg_pred = i_seg_logits.argmax(dim=0, keepdim=True)
+            else:
+                i_seg_logits = i_seg_logits.sigmoid()
+                i_seg_pred = (i_seg_logits >
+                              self.decode_head.threshold).to(i_seg_logits)
+
+            fake_X = gen_outs[f'gen_out.fake_{target_domain_R}'].squeeze(0)
+            fake_RGB = gen_outs[f'gen_out.fake_{target_domain_X}'].squeeze(0)
+            data_samples[i].set_data({
+                'seg_logits':
+                PixelData(**{'data': i_seg_logits}),
+                'pred_sem_seg':
+                PixelData(**{'data': i_seg_pred}),
+                'gen_fake_X':
+                PixelData(**{'data': fake_X}),
+                'gen_fake_RGB':
+                    PixelData(**{'data': fake_RGB})
+            })
+
+        return data_samples

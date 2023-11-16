@@ -1,4 +1,4 @@
 # Copyright (c) OpenMMLab. All rights reserved.
-from .visualization_hook import SegVisualizationHook, SegVisualizationHookplus
+from .visualization_hook import SegVisualizationHook, SegVisualizationHookplus, GanVisualizationHook
 
-__all__ = ['SegVisualizationHook', 'SegVisualizationHookplus']
+__all__ = ['SegVisualizationHook', 'SegVisualizationHookplus', 'GanVisualizationHook']
