@@ -6,8 +6,9 @@ from .jpu import JPU
 from .mla_neck import MLANeck
 from .multilevel_neck import MultiLevelNeck
 from .rgbx_generator import RGBXGenerator
+from .rgbx_unet3plus_generator import UNet3plusGenerators
 
 __all__ = [
     'FPN', 'MultiLevelNeck', 'MLANeck', 'ICNeck', 'JPU', 'Feature2Pyramid',
-    'RGBXGenerator'
+    'RGBXGenerator', 'UNet3plusGenerators'
 ]

@@ -629,22 +629,29 @@ class MTEncoderDecoder(BaseSegmentor):
         losses = dict()
         # 是一个moduledict，其中包含了两个模态的判别器，存放为字典形式
         discriminators = self.get_module(self.discriminators)
-        # GAN loss for the rgb branch generator D_X
         real_RGB, real_X = torch.split(image_data['inputs'], (3, 3), dim=1)
+        # GAN loss for the rgb branch generator D_X
         fake_ab_X = torch.cat((real_RGB,
                              generators_outputs[f'gen_out.fake_{target_domain_R}']), 1)
         # discriminator_X forward
         fake_pred_X = discriminators[target_domain_R](fake_ab_X)
         losses['loss_gen_X'] = F.binary_cross_entropy_with_logits(
-            fake_pred_X, 1. * torch.ones_like(fake_pred_X)) * 0.05
+            fake_pred_X, 1. * torch.ones_like(fake_pred_X)) * 0.01
+        losses['loss_pixel_gen_X'] = F.l1_loss(
+            real_X,
+            generators_outputs[f'gen_out.fake_{target_domain_R}'],
+            reduce='mean')
         # GAN loss for the X branch generator D_RGB
         fake_ab_R = torch.cat((real_X,
                                generators_outputs[f'gen_out.fake_{target_domain_X}']), 1)
         # discriminator_R forward
         fake_pred_R = discriminators[target_domain_X](fake_ab_R)
         losses['loss_gen_R'] = F.binary_cross_entropy_with_logits(
-            fake_pred_R, 1. * torch.ones_like(fake_pred_R)) * 0.05
-
+            fake_pred_R, 1. * torch.ones_like(fake_pred_R)) * 0.01
+        losses['loss_pixel_gen_R'] = F.l1_loss(
+            real_RGB,
+            generators_outputs[f'gen_out.fake_{target_domain_X}'],
+            reduce='mean')
         return add_prefix(losses, 'gan')
 
     def _get_disc_loss(self, generators_outputs, image_data):
