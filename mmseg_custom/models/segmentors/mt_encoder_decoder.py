@@ -107,6 +107,10 @@ class MTEncoderDecoder(BaseSegmentor):
                  auxiliary_head: OptConfigType = None,
                  generators: OptConfigType = None,
                  discriminator: OptConfigType = None,
+                 gen_x_pixel_loss_weight = 1.0,
+                 gen_x_gan_loss_weight = 0.01,
+                 gen_rgb_pixel_loss_weight = 1.0,
+                 gen_rgb_gan_loss_weight=0.01,
                  default_domain_RGB: str = 'X',
                  default_domain_X: str = 'RGB',
                  reachable_domains: List[str] = ['RGB', 'X'],
@@ -130,7 +134,10 @@ class MTEncoderDecoder(BaseSegmentor):
         self._default_domain_R = default_domain_RGB
         self._default_domain_X = default_domain_X
         self._reachable_domains = reachable_domains
-
+        self.gen_x_pixel_loss_weight = gen_x_pixel_loss_weight
+        self.gen_rgb_pixel_loss_weight = gen_rgb_pixel_loss_weight
+        self.gen_x_gan_loss_weight = gen_x_gan_loss_weight
+        self.gen_rgb_gan_loss_weight = gen_rgb_gan_loss_weight
         self._init_decode_head(decode_head)
         self._init_auxiliary_head(auxiliary_head) # generator
         self._init_discriminators(discriminator) # discriminator
@@ -636,22 +643,22 @@ class MTEncoderDecoder(BaseSegmentor):
         # discriminator_X forward
         fake_pred_X = discriminators[target_domain_R](fake_ab_X)
         losses['loss_gen_X'] = F.binary_cross_entropy_with_logits(
-            fake_pred_X, 1. * torch.ones_like(fake_pred_X)) * 0.01
+            fake_pred_X, 1. * torch.ones_like(fake_pred_X)) * self.gen_x_gan_loss_weight
         losses['loss_pixel_gen_X'] = F.l1_loss(
             real_X,
             generators_outputs[f'gen_out.fake_{target_domain_R}'],
-            reduce='mean')
+            reduce='mean') * self.gen_x_pixel_loss_weight
         # GAN loss for the X branch generator D_RGB
         fake_ab_R = torch.cat((real_X,
                                generators_outputs[f'gen_out.fake_{target_domain_X}']), 1)
         # discriminator_R forward
         fake_pred_R = discriminators[target_domain_X](fake_ab_R)
         losses['loss_gen_R'] = F.binary_cross_entropy_with_logits(
-            fake_pred_R, 1. * torch.ones_like(fake_pred_R)) * 0.01
+            fake_pred_R, 1. * torch.ones_like(fake_pred_R)) * self.gen_rgb_gan_loss_weight
         losses['loss_pixel_gen_R'] = F.l1_loss(
             real_RGB,
             generators_outputs[f'gen_out.fake_{target_domain_X}'],
-            reduce='mean')
+            reduce='mean') * self.gen_rgb_pixel_loss_weight
         return add_prefix(losses, 'gan')
 
     def _get_disc_loss(self, generators_outputs, image_data):
