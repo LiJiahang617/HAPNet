@@ -159,3 +159,6 @@ work_dirs/
 #.idea/
 .idea/
 data/
+MF_RGBT.zip
+train_nyu.sh
+train_nyu_mscan.sh

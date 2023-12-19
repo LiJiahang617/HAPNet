@@ -8,6 +8,7 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint as cp
 from mmcv_custom.cnn.bricks import DropPath
+from mmcv_custom.ops import MultiScaleDeformableAttention
 from mmengine_custom.model import BaseModule, ModuleList, Sequential
 from mmengine_custom.logging import print_log
 from mmengine_custom.model import constant_init, kaiming_init, normal_init
@@ -130,6 +131,239 @@ class ConvNeXtBlock(BaseModule):
         return x
 
 
+def get_reference_points(spatial_shapes, device):
+    reference_points_list = []
+    for lvl, (H_, W_) in enumerate(spatial_shapes):
+        ref_y, ref_x = torch.meshgrid(
+            torch.linspace(0.5, H_ - 0.5, H_, dtype=torch.float32, device=device),
+            torch.linspace(0.5, W_ - 0.5, W_, dtype=torch.float32, device=device))
+        ref_y = ref_y.reshape(-1)[None] / H_
+        ref_x = ref_x.reshape(-1)[None] / W_
+        ref = torch.stack((ref_x, ref_y), -1)
+        reference_points_list.append(ref)
+    reference_points = torch.cat(reference_points_list, 1)
+    reference_points = reference_points[:, :, None]
+    return reference_points
+
+def deform_inputs(x):
+    bs, c, h, w = x.shape
+    # stage 0
+    spatial_shapes = torch.as_tensor([(h // 8, w // 8),
+                                      (h // 16, w // 16),
+                                      (h // 32, w // 32)],
+                                     dtype=torch.long, device=x.device)
+    level_start_index = torch.cat((spatial_shapes.new_zeros(
+        (1,)), spatial_shapes.prod(1).cumsum(0)[:-1]))
+    reference_points = get_reference_points([(h // 4, w // 4)], x.device)
+    deform_inputs0_1 = [reference_points, spatial_shapes, level_start_index]
+
+    spatial_shapes = torch.as_tensor([(h // 4, w // 4)], dtype=torch.long, device=x.device)
+    level_start_index = torch.cat((spatial_shapes.new_zeros(
+        (1,)), spatial_shapes.prod(1).cumsum(0)[:-1]))
+    reference_points = get_reference_points([(h // 8, w // 8),
+                                             (h // 16, w // 16),
+                                             (h // 32, w // 32)], x.device)
+    deform_inputs0_2 = [reference_points, spatial_shapes, level_start_index]
+    # stage 1
+    spatial_shapes = torch.as_tensor([(h // 8, w // 8),
+                                      (h // 16, w // 16),
+                                      (h // 32, w // 32)],
+                                     dtype=torch.long, device=x.device)
+    level_start_index = torch.cat((spatial_shapes.new_zeros(
+        (1,)), spatial_shapes.prod(1).cumsum(0)[:-1]))
+    reference_points = get_reference_points([(h // 8, w // 8)], x.device)
+    deform_inputs1_1 = [reference_points, spatial_shapes, level_start_index]
+
+    spatial_shapes = torch.as_tensor([(h // 8, w // 8)], dtype=torch.long, device=x.device)
+    level_start_index = torch.cat((spatial_shapes.new_zeros(
+        (1,)), spatial_shapes.prod(1).cumsum(0)[:-1]))
+    reference_points = get_reference_points([(h // 8, w // 8),
+                                             (h // 16, w // 16),
+                                             (h // 32, w // 32)], x.device)
+    deform_inputs1_2 = [reference_points, spatial_shapes, level_start_index]
+    # stage 2
+    spatial_shapes = torch.as_tensor([(h // 8, w // 8),
+                                      (h // 16, w // 16),
+                                      (h // 32, w // 32)],
+                                     dtype=torch.long, device=x.device)
+    level_start_index = torch.cat((spatial_shapes.new_zeros(
+        (1,)), spatial_shapes.prod(1).cumsum(0)[:-1]))
+    reference_points = get_reference_points([(h // 16, w // 16)], x.device)
+    deform_inputs2_1 = [reference_points, spatial_shapes, level_start_index]
+
+    spatial_shapes = torch.as_tensor([(h // 16, w // 16)], dtype=torch.long, device=x.device)
+    level_start_index = torch.cat((spatial_shapes.new_zeros(
+        (1,)), spatial_shapes.prod(1).cumsum(0)[:-1]))
+    reference_points = get_reference_points([(h // 8, w // 8),
+                                             (h // 16, w // 16),
+                                             (h // 32, w // 32)], x.device)
+    deform_inputs2_2 = [reference_points, spatial_shapes, level_start_index]
+    # stage 3
+    spatial_shapes = torch.as_tensor([(h // 8, w // 8),
+                                      (h // 16, w // 16),
+                                      (h // 32, w // 32)],
+                                     dtype=torch.long, device=x.device)
+    level_start_index = torch.cat((spatial_shapes.new_zeros(
+        (1,)), spatial_shapes.prod(1).cumsum(0)[:-1]))
+    reference_points = get_reference_points([(h // 32, w // 32)], x.device)
+    deform_inputs3_1 = [reference_points, spatial_shapes, level_start_index]
+
+    spatial_shapes = torch.as_tensor([(h // 32, w // 32)], dtype=torch.long, device=x.device)
+    level_start_index = torch.cat((spatial_shapes.new_zeros(
+        (1,)), spatial_shapes.prod(1).cumsum(0)[:-1]))
+    reference_points = get_reference_points([(h // 8, w // 8),
+                                             (h // 16, w // 16),
+                                             (h // 32, w // 32)], x.device)
+    deform_inputs3_2 = [reference_points, spatial_shapes, level_start_index]
+
+    return (deform_inputs0_1, deform_inputs0_2, deform_inputs1_1, deform_inputs1_2,
+            deform_inputs2_1, deform_inputs2_2, deform_inputs3_1, deform_inputs3_2)
+
+
+class ConvFFN(nn.Module):
+    def __init__(self, in_features, hidden_features=None, out_features=None,
+                 act_layer=nn.GELU, drop=0.):
+        super().__init__()
+        out_features = out_features or in_features
+        hidden_features = hidden_features or in_features
+        self.fc1 = nn.Linear(in_features, hidden_features)
+        self.dwconv = DWConv(hidden_features)
+        self.act = act_layer()
+        self.fc2 = nn.Linear(hidden_features, out_features)
+        self.drop = nn.Dropout(drop)
+
+    def forward(self, x, H, W):
+        x = self.fc1(x)
+        x = self.dwconv(x, H, W)
+        x = self.act(x)
+        x = self.drop(x)
+        x = self.fc2(x)
+        x = self.drop(x)
+        return x
+
+
+class DWConv(nn.Module):
+    def __init__(self, dim=768):
+        super().__init__()
+        self.dwconv = nn.Conv2d(dim, dim, 3, 1, 1, bias=True, groups=dim)
+
+    def forward(self, x, H, W):
+        B, N, C = x.shape
+        n = N // 21
+        x1 = x[:, 0:16 * n, :].transpose(1, 2).view(B, C, H * 2, W * 2).contiguous()
+        x2 = x[:, 16 * n:20 * n, :].transpose(1, 2).view(B, C, H, W).contiguous()
+        x3 = x[:, 20 * n:, :].transpose(1, 2).view(B, C, H // 2, W // 2).contiguous()
+        x1 = self.dwconv(x1).flatten(2).transpose(1, 2)
+        x2 = self.dwconv(x2).flatten(2).transpose(1, 2)
+        x3 = self.dwconv(x3).flatten(2).transpose(1, 2)
+        x = torch.cat([x1, x2, x3], dim=1)
+        return x
+
+
+class Extractor(nn.Module):
+    def __init__(self, dim, num_heads=6, n_points=4, n_levels=1, deform_ratio=1.0,
+                 with_cffn=True, cffn_ratio=0.25, drop=0., drop_path=0.,
+                 norm_layer=partial(nn.LayerNorm, eps=1e-6), with_cp=False):
+        super().__init__()
+        self.query_norm = norm_layer(dim)
+        self.feat_norm = norm_layer(dim)
+        self.attn = MultiScaleDeformableAttention(embed_dims=dim, num_levels=n_levels, num_heads=num_heads,
+                                 num_points=n_points, value_proj_ratio=deform_ratio)
+        self.with_cffn = with_cffn
+        self.with_cp = with_cp
+        if with_cffn:
+            self.ffn = ConvFFN(in_features=dim, hidden_features=int(dim * cffn_ratio), drop=drop)
+            self.ffn_norm = norm_layer(dim)
+            self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+
+    def forward(self, query, reference_points, feat, spatial_shapes, level_start_index, H, W):
+
+        def _inner_forward(query, feat):
+
+            attn = self.attn(self.query_norm(query), reference_points,
+                             self.feat_norm(feat), spatial_shapes,
+                             level_start_index, None)
+            query = query + attn
+
+            if self.with_cffn:
+                query = query + self.drop_path(self.ffn(self.ffn_norm(query), H, W))
+            return query
+
+        if self.with_cp and query.requires_grad:
+            query = cp.checkpoint(_inner_forward, query, feat)
+        else:
+            query = _inner_forward(query, feat)
+
+        return query
+
+
+class Injector(nn.Module):
+    def __init__(self, dim, num_heads=6, n_points=4, n_levels=1, deform_ratio=1.0,
+                 norm_layer=partial(nn.LayerNorm, eps=1e-6), init_values=0., with_cp=False):
+        super().__init__()
+        self.with_cp = with_cp
+        self.query_norm = norm_layer(dim)
+        self.feat_norm = norm_layer(dim)
+        self.attn = MultiScaleDeformableAttention(d_model=dim, n_levels=n_levels, n_heads=num_heads,
+                                 n_points=n_points, ratio=deform_ratio)
+        self.gamma = nn.Parameter(init_values * torch.ones((dim)), requires_grad=True)
+
+    def forward(self, query, reference_points, feat, spatial_shapes, level_start_index):
+
+        def _inner_forward(query, feat):
+
+            attn = self.attn(self.query_norm(query), reference_points,
+                             self.feat_norm(feat), spatial_shapes,
+                             level_start_index, None)
+            return query + self.gamma * attn
+
+        if self.with_cp and query.requires_grad:
+            query = cp.checkpoint(_inner_forward, query, feat)
+        else:
+            query = _inner_forward(query, feat)
+
+        return query
+
+
+class InteractionBlock(nn.Module):
+    def __init__(self, dim, num_heads=6, n_points=4, norm_layer=partial(nn.LayerNorm, eps=1e-6),
+                 drop=0., drop_path=0., with_cffn=True, cffn_ratio=0.25, init_values=0.,
+                 deform_ratio=1.0, extra_extractor=False, with_cp=False):
+        super().__init__()
+
+        self.injector = Injector(dim=dim, n_levels=3, num_heads=num_heads, init_values=init_values,
+                                 n_points=n_points, norm_layer=norm_layer, deform_ratio=deform_ratio,
+                                 with_cp=with_cp)
+        self.extractor = Extractor(dim=dim, n_levels=1, num_heads=num_heads, n_points=n_points,
+                                   norm_layer=norm_layer, deform_ratio=deform_ratio, with_cffn=with_cffn,
+                                   cffn_ratio=cffn_ratio, drop=drop, drop_path=drop_path, with_cp=with_cp)
+        if extra_extractor:
+            self.extra_extractors = nn.Sequential(*[
+                Extractor(dim=dim, num_heads=num_heads, n_points=n_points, norm_layer=norm_layer,
+                          with_cffn=with_cffn, cffn_ratio=cffn_ratio, deform_ratio=deform_ratio,
+                          drop=drop, drop_path=drop_path, with_cp=with_cp)
+                for _ in range(2)
+            ])
+        else:
+            self.extra_extractors = None
+
+    def forward(self, x, c, blocks, deform_inputs1, deform_inputs2, H, W):
+        x = self.injector(query=x, reference_points=deform_inputs1[0],
+                          feat=c, spatial_shapes=deform_inputs1[1],
+                          level_start_index=deform_inputs1[2])
+        for idx, blk in enumerate(blocks):
+            x = blk(x, H, W)
+        c = self.extractor(query=c, reference_points=deform_inputs2[0],
+                           feat=x, spatial_shapes=deform_inputs2[1],
+                           level_start_index=deform_inputs2[2], H=H, W=W)
+        if self.extra_extractors is not None:
+            for extractor in self.extra_extractors:
+                c = extractor(query=c, reference_points=deform_inputs2[0],
+                              feat=x, spatial_shapes=deform_inputs2[1],
+                              level_start_index=deform_inputs2[2], H=H, W=W)
+        return x, c
+
+
 @MODELS.register_module()
 class TwinConvNeXt(BaseBackbone):
     """TwinConvNeXt backbone.
@@ -237,6 +471,14 @@ class TwinConvNeXt(BaseBackbone):
                  frozen_stages=0,
                  gap_before_final_norm=True,
                  with_cp=False,
+                 embed_dims=256,
+                 deform_num_heads=6,
+                 with_cffn=True,
+                 add_both_feature=True,
+                 cffn_ratio=0.25,
+                 deform_ratio=1.0,
+                 init_values=0.,
+                 num_points=4,
                  init_cfg=[
                      dict(
                          type='TruncNormal',
@@ -261,6 +503,7 @@ class TwinConvNeXt(BaseBackbone):
 
         self.depths = arch['depths']
         self.channels = arch['channels']
+        self.embed_dims = embed_dims
         assert (isinstance(self.depths, Sequence)
                 and isinstance(self.channels, Sequence)
                 and len(self.depths) == len(self.channels)), \
@@ -376,7 +619,24 @@ class TwinConvNeXt(BaseBackbone):
                 norm_layer_y = build_norm_layer(norm_cfg, channels)
                 self.add_module(f'norm_x{i}', norm_layer_x)
                 self.add_module(f'norm_y{i}', norm_layer_y)
+        self.reduces_rgb = nn.ModuleList()
+        self.reduces_x = nn.ModuleList()
+        for i in range(self.num_stages):
+            channels = self.channels[i]
+            reduce_block_rgb = nn.Conv2d(channels, embed_dims, kernel_size=1, stride=1, padding=0, bias=True)
+            reduce_block_x = nn.Conv2d(channels, embed_dims, kernel_size=1, stride=1, padding=0, bias=True)
+            self.reduces_rgb.append(reduce_block_rgb)
+            self.reduces_x.append(reduce_block_x)
 
+        self.interactions = nn.Sequential(*[InteractionBlock(dim=embed_dims, num_heads=deform_num_heads,
+                                                             n_points=num_points, init_values=init_values,
+                                                             drop_path=drop_path_rate, norm_layer=build_norm_layer(norm_cfg, self.channels[i]),
+                                                             with_cffn=with_cffn,cffn_ratio=cffn_ratio,
+                                                             deform_ratio=deform_ratio, extra_extractor=
+                                                             True if i == len(self.channels)-1 else False,
+                                                             with_cp=with_cp)
+                                            for i in range(len(self.channels))
+                                            ])
         self._freeze_stages()
 
     def init_weights(self):
@@ -442,23 +702,13 @@ class TwinConvNeXt(BaseBackbone):
     def forward(self, x):
         # fetch inputs and split it to 2 modalities
         x, y = torch.split(x, (3, 3), dim=1)
-        # rgb encoder
-        outs_x = []
-        for i, stage_x in enumerate(self.stages_x):
-            x = self.downsample_layers_x[i](x)
-            x = stage_x(x)
-            if i in self.out_indices:
-                norm_layer = getattr(self, f'norm_x{i}')
-                if self.gap_before_final_norm:
-                    gap = x.mean([-2, -1], keepdim=True)
-                    outs_x.append(norm_layer(gap).flatten(1))
-                else:
-                    outs_x.append(norm_layer(x))
-        # another encoder
+        # x modality encoder forward
         outs_y = []
         for i, stage_y in enumerate(self.stages_y):
             y = self.downsample_layers_y[i](y)
             y = stage_y(y)
+            # all stages have same feat channels
+            y = self.reduces_x[i](y)
             if i in self.out_indices:
                 norm_layer = getattr(self, f'norm_y{i}')
                 if self.gap_before_final_norm:
@@ -466,6 +716,28 @@ class TwinConvNeXt(BaseBackbone):
                     outs_y.append(norm_layer(gap).flatten(1))
                 else:
                     outs_y.append(norm_layer(y))
+
+        # rgb+x fusion forward
+        outs_x = []
+        (deform_inputs0_1, deform_inputs0_2, deform_inputs1_1, deform_inputs1_2,
+         deform_inputs2_1, deform_inputs2_2, deform_inputs3_1, deform_inputs3_2) = deform_inputs(x)
+        # stage 0
+        x = self.downsample_layers_x[0](x)
+
+        x = self.stages_x[0](x)
+        norm_layer = getattr(self, f'norm_x{0}')
+        outs_x.append(norm_layer(x))
+
+
+
+
+
+
+
+
+
+
+
         # concat rgb encoder and ano encoder together and feed them to following parts
         outs = [torch.cat((out_x, out_y), dim=1) for out_x, out_y in zip(outs_x, outs_y)]
 
@@ -477,15 +749,19 @@ class TwinConvNeXt(BaseBackbone):
             downsample_layer_y = self.downsample_layers_y[i]
             stage_x = self.stages_x[i]
             stage_y = self.stages_y[i]
+            reduce_block_rgb = self.reduces_rgb[i]
+            reduce_block_x = self.reduces_x[i]
             downsample_layer_x.eval()
             downsample_layer_y.eval()
             stage_x.eval()
             stage_y.eval()
+            reduce_block_rgb.eval()
+            reduce_block_x.eval()
             for param in chain(downsample_layer_x.parameters(),
-                               stage_x.parameters()):
+                               stage_x.parameters(), reduce_block_rgb.parameters()):
                 param.requires_grad = False
             for param in chain(downsample_layer_y.parameters(),
-                               stage_y.parameters()):
+                               stage_y.parameters(), reduce_block_x.parameters()):
                 param.requires_grad = False
 
     def train(self, mode=True):
