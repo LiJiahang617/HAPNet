@@ -350,7 +350,7 @@ class InteractionBlock(nn.Module):
         else:
             self.extra_extractors = None
 
-    def forward(self, x, c, blocks, proj_layer, deform_inputs1, deform_inputs2, bs, dim, H, W):
+    def forward(self, x, c, blocks, deform_inputs1, deform_inputs2, bs, dim, H, W):
         # x -> b, num_query, c (num_query=H*W) as msdeformable attention input
         x = self.injector(query=x, reference_points=deform_inputs1[0],
                           feat=c, spatial_shapes=deform_inputs1[1],
@@ -369,10 +369,7 @@ class InteractionBlock(nn.Module):
                 c = extractor(query=c, reference_points=deform_inputs2[0],
                               feat=x, spatial_shapes=deform_inputs2[1],
                               level_start_index=deform_inputs2[2], H=H, W=W)
-            return x, c
-        else:
-            c = proj_layer(c)
-            return x, c
+        return x, c
 
 
 @MODELS.register_module()
@@ -625,23 +622,23 @@ class ConvNeXtAdapter(BaseBackbone):
                 self.add_module(f'norm_y{i}', norm_layer_y)
         # unify feature channels
         # TODO: consider dynamic or static fusion: x modality features should produce 3 times or use one to iter 3 times
-        self.ms_input_convs = nn.ModuleList()
-        for j in range(1, len(self.channels)):
-            in_embed_dim = self.channels[j]
-            out_embed_dim = self.channels[0]
-            input_conv = ConvModule(
-                in_embed_dim,
-                out_embed_dim,
-                kernel_size=1,
-                stride=1,
-                padding=0,
-                norm_cfg=norm_cfg,
-                act_cfg=None,
-                bias=True)
-            self.ms_input_convs.append(input_conv)
-        self.stage0_1_proj = nn.Linear(self.channels[0], self.channels[1])
-        self.stage1_2_proj = nn.Linear(self.channels[1], self.channels[2])
-        self.stage2_3_proj = nn.Linear(self.channels[2], self.channels[3])
+        self.stage_input_convs = dict()
+        for i in range(self.num_stages):
+            input_convs = nn.ModuleList()
+            for j in range(1, len(self.channels)):
+                in_embed_dim = self.channels[j]
+                out_embed_dim = self.channels[i]
+                input_conv = ConvModule(
+                    in_embed_dim,
+                    out_embed_dim,
+                    kernel_size=1,
+                    stride=1,
+                    padding=0,
+                    norm_cfg=norm_cfg,
+                    act_cfg=None,
+                    bias=True)
+                input_convs.append(input_conv)
+            self.stage_input_convs.update({f'stage{i}': input_convs})
         # RGB-X fusion block
         self.interactions = nn.Sequential(*[InteractionBlock(dim=self.channels[i], num_heads=deform_num_heads,
                                                              n_points=num_points, init_values=init_values,
@@ -652,14 +649,6 @@ class ConvNeXtAdapter(BaseBackbone):
                                                              with_cp=with_cp)
                                             for i in range(len(self.channels))
                                             ])
-        # get 1/4 feature map
-        self.up = nn.ConvTranspose2d(self.channels[1], self.channels[0], 2, 2)
-        # batch norm
-        self.f_norm0 = nn.SyncBatchNorm(self.channels[0])
-        self.f_norm1 = nn.SyncBatchNorm(self.channels[1])
-        self.f_norm2 = nn.SyncBatchNorm(self.channels[2])
-        self.f_norm3 = nn.SyncBatchNorm(self.channels[3])
-
         self._freeze_stages()
 
     def init_weights(self):
@@ -723,7 +712,6 @@ class ConvNeXtAdapter(BaseBackbone):
             self.load_state_dict(state_dict_y, strict=False)
 
     def forward(self, x):
-        batch_size, _, ori_h, ori_w = x.shape
         # fetch inputs and split it to 2 modalities
         x, y = torch.split(x, (3, 3), dim=1)
         # x modality encoder forward
@@ -739,63 +727,58 @@ class ConvNeXtAdapter(BaseBackbone):
                     gap = y.mean([-2, -1], keepdim=True)
                     outs_y.append(norm_layer(gap).flatten(1))
                 else:
-
-
                     outs_y.append(norm_layer(y))
         # unify x modality multiscale features for msdeformable attention
         # TODO: Re-implement it for currently it is memory-wasted.
-        feat_outs = [] # 3 scale: b, n_i, c
-        for i, input_conv in enumerate(self.ms_input_convs, start=1): # 3
-            assert  i > 0, f'{i} should larger than 0'
-            feat_out = input_conv(outs_y[i])
-            feat_out = feat_out.flatten(2).transpose(1, 2)
-            feat_outs.append(feat_out)
-            assert len(feat_out.shape) == 3, 'feature should have 3 dims: B, N, C!'
-        # TODO: consider if only use 3 scale is suitable
-        assert len(feat_outs) == 3, (f'stage_outs should contain 1/8, 1/16, '
-                                      f'1/32 strides features, but found {len(feat_outs)}!')
-        ms_feats = torch.cat([feat_outs[i] for i in range(len(self.ms_input_convs))], dim=1)
+        y_feature_stages = dict() # multiscale x modality feature
+        for i in range(len(self.num_stages)): # 4
+            key = f'stage{i}'
+            stage_input_convs = self.stage_input_convs[key]
+            feat_outs = []
+            for j, input_conv in enumerate(stage_input_convs, start=1): # 3
+                feat_out = input_conv(outs_y[j])
+                feat_out = feat_out.flatten(2).transpose(1, 2)
+                feat_outs.append(feat_out)
+                assert len(feat_out.shape) == 3, 'feature should have 3 dims: B, N, C!'
+            # TODO: consider if only use 3 scale is suitable
+            assert len(feat_outs) == 3, (f'stage_outs should contain 1/8, 1/16, '
+                                          f'1/32 strides features, but found {len(feat_outs)}!')
+            ms_feats_concat = torch.cat([feat_outs[i] for i in range(len(stage_input_convs))], dim=1)
+            y_feature_stages.update({key: ms_feats_concat})
+
         # rgb+x fusion forward
         outs_x = []
         # (deform_inputs0_1, deform_inputs0_2, deform_inputs1_1, deform_inputs1_2,
         #          deform_inputs2_1, deform_inputs2_2, deform_inputs3_1, deform_inputs3_2)
         deform_required = deform_inputs(x)
-        # stage forward
+        # stage 0
         for i, layer in enumerate(self.interactions): # length=4
             x = self.downsample_layers_x[i](x)
             bs, dim, H, W = x.shape
             x = x.flatten(2).transpose(1, 2)
             conv_block = self.stages_x[i]
-            proj_index = f'stage{i}_{i+1}_proj'
-            proj_layer = getattr(self, proj_index)
-            x, ms_feats = layer(x, ms_feats, conv_block, proj_layer, deform_required[2*i],
+            ms_y_feat = y_feature_stages[f'stage{i}']
+            x, c = layer(x, ms_y_feat, conv_block, deform_required[2*i],
                          deform_required[2*i+1], bs, dim, H, W)
             # reshape to 4 dims tensor as feature output and norm
             x = x.transpose(1, 2).reshape(bs, dim, H, W).contiguous()
-            norm_layer = getattr(self, f'norm_x{i}')
+            norm_layer = getattr(self, f'norm_x{0}')
             outs_x.append(norm_layer(x))
-        # split & reshape
-        y_1 = ms_feats[:, :feat_outs[0].size(1), :]
-        y_2 = ms_feats[:, feat_outs[0].size(1):feat_outs[0].size(1)+feat_outs[1].size(1), :]
-        y_3 = ms_feats[:, feat_outs[0].size(1)+feat_outs[1].size(1):, :]
 
-        y_1 = y_1.tranpose(1, 2).reshape(batch_size, -1, ori_h//8, ori_w//8).contiguous()
-        y_2 = y_2.tranpose(1, 2).reshape(batch_size, -1, ori_h // 16, ori_w // 16).contiguous()
-        y_3 = y_3.tranpose(1, 2).reshape(batch_size, -1, ori_h // 32, ori_w // 32).contiguous()
-        y_0 = self.up(y_1) + outs_y[0]
-        # add final feature
-        x_0, x_1, x_2, x_3 = outs_x
-        x_0 = x_0 + y_0
-        x_1 = x_1 + y_1
-        x_2 = x_2 + y_2
-        x_3 = x_3 + y_3
-        # final norm
-        f_0 = self.f_norm0(x_0)
-        f_1 = self.f_norm1(x_1)
-        f_2 = self.f_norm2(x_2)
-        f_3 = self.f_norm3(x_3)
 
-        return [f_0, f_1, f_2, f_3]
+
+
+
+
+
+
+
+
+
+        # concat rgb encoder and ano encoder together and feed them to following parts
+        outs = [torch.cat((out_x, out_y), dim=1) for out_x, out_y in zip(outs_x, outs_y)]
+
+        return outs
 
     def _freeze_stages(self):
         for i in range(self.frozen_stages):
