@@ -2,7 +2,7 @@ _base_ = [
 '../_base_/datasets/mmmf_0-1_640x480.py'
 ]
 
-pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-base_3rdparty_in21k_20220301-262fd037.pth'
+pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-small_3rdparty_32xb128-noema_in1k_20220301-303e75e3.pth'
 
 crop_size = (480, 640) # h, w
 data_preprocessor = dict(
@@ -19,18 +19,18 @@ model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
     backbone=dict(
-        type='mmpretrain_custom.TwinConvNeXt',
-        arch='base',
+        type='mmpretrain_custom.ConvNeXtAdapter',
+        arch='small',
         out_indices=[0, 1, 2, 3],
-        drop_path_rate=0.4,
+        drop_path_rate=0.3,
         layer_scale_init_value=1.0,
         gap_before_final_norm=False,
         init_cfg=dict(
             type='Pretrained', checkpoint=pretrained,
             prefix='backbone.')),
     decode_head=dict(
-        type='RoadFormerHead',
-        in_channels=[256, 512, 1024, 2048],  # modified here
+        type='Mask2FormerHead',
+        in_channels=[96, 192, 384, 768],  # modified here
         strides=[4, 8, 16, 32],
         feat_channels=256,
         out_channels=256,
@@ -39,8 +39,7 @@ model = dict(
         num_transformer_feat_level=3,
         align_corners=False,
         pixel_decoder=dict(
-            type='mmdet_custom.RoadFormerPixelDecoder',
-            img_scale=crop_size, # need to modify if image resolution differs
+            type='mmdet_custom.MSDeformAttnPixelDecoder',
             num_outs=3,
             norm_cfg=dict(type='GN', num_groups=32),
             act_cfg=dict(type='ReLU'),
@@ -182,7 +181,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="RoadFormer_mf-480x640", name="convnext-b_0-1_thermal_norm")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="", name="")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')

@@ -16,7 +16,7 @@ data_preprocessor = dict(
 num_classes = 9
 
 model = dict(
-    type='EncoderDecoder',
+    type='MTEncoderDecoder',
     data_preprocessor=data_preprocessor,
     backbone=dict(
         type='mmpretrain_custom.TwinConvNeXt',
@@ -28,6 +28,18 @@ model = dict(
         init_cfg=dict(
             type='Pretrained', checkpoint=pretrained,
             prefix='backbone.')),
+    default_domain_RGB='X',
+    default_domain_X='RGB',
+    reachable_domains=['RGB', 'X'],
+    generators=dict(type='UNet3plusGenerators',
+        in_channels=[64, 128, 256, 512, 1024]),
+    discriminator=dict(
+        type='PatchDiscriminator',
+        in_channels=6,
+        base_channels=64,
+        num_conv=3,
+        norm_cfg=dict(type='BN'),
+        init_cfg=dict(type='normal', gain=0.02)),
     decode_head=dict(
         type='RoadFormerHead',
         in_channels=[256, 512, 1024, 2048],  # modified here
@@ -138,13 +150,15 @@ model = dict(
     train_cfg=dict(),
     test_cfg=dict(mode='whole'))
 
-# optimizer
-optimizer = dict(
-    type='AdamW', lr=0.0001, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
+# optimizers joint-learning needs multiple optimizers work together
 optim_wrapper = dict(
-    type='OptimWrapper',
-    optimizer=optimizer,
-    clip_grad=dict(max_norm=5.0))
+    constructor='MultiOptimWrapperConstructor',
+    main_head=dict(
+        type='OptimWrapper',
+        optimizer=dict(type='Adam', lr=2e-4, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))),
+    discriminators=dict(
+        type='OptimWrapper',
+        optimizer=dict(type='Adam', lr=1e-4, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))))
 
 # learning policy
 param_scheduler = [
@@ -160,6 +174,7 @@ param_scheduler = [
 ]
 
 # training schedule for 160k
+# runner里面train_cfg中的内容被给了self._train_loop用于构建训练循环
 train_cfg = dict(
     type='EpochBasedTrainLoop', max_epochs=200, val_begin=1, val_interval=1)
 val_cfg = dict(type='ValLoop')
@@ -172,7 +187,7 @@ default_hooks = dict(
         type='CheckpointHook', by_epoch=True, interval=100,
         save_best='mIoU'),
     sampler_seed=dict(type='DistSamplerSeedHook'),
-    visualization=dict(type='SegVisualizationHook', interval=1, draw=False))
+    visualization=dict(type='GanVisualizationHook', interval=1, draw=True))
 
 # Runtime configs
 default_scope = 'mmseg_custom'
