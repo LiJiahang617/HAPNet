@@ -6,7 +6,8 @@ from .transforms import *
 from .version import *
 from .video import *
 from .visualization import *
-
+from .cnn import *
+from .ops import *
 # The following modules are not imported to this level, so mmcv_custom may be used
 # without PyTorch.
 # - op

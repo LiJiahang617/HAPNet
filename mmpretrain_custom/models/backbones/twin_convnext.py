@@ -50,7 +50,7 @@ class ConvNeXtBlock(BaseModule):
         And it may be slightly faster.
     """
 
-    def Ï__init__(self,
+    def __init__(self,
                  in_channels,
                  dw_conv_cfg=dict(kernel_size=7, padding=3),
                  norm_cfg=dict(type='LN2d', eps=1e-6),
