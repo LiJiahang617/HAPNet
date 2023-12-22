@@ -103,7 +103,7 @@ model = dict(
             use_sigmoid=False,
             loss_weight=2.0,
             reduction='mean',
-            class_weight=[1.0] * num_classes + [0.1]),
+            class_weight=[1.5105, 16.6591, 29.4238, 34.6315, 40.0845, 41.4357, 47.9794, 45.3725, 44.9000] + [0.1]),
         loss_mask=dict(
             type='mmdet_custom.CrossEntropyLoss',
             use_sigmoid=True,
@@ -141,7 +141,7 @@ model = dict(
 
 # optimizer
 optimizer = dict(
-    type='AdamW', lr=0.0001, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
+    type='AdamW', lr=0.0002, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
@@ -183,7 +183,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet", name="convnext-adapter-s_bslhead")),
+                dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet", name="convnext-adapter-s_weighted_cls_loss_lr_00002")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')

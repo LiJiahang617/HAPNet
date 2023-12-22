@@ -291,7 +291,6 @@ class Extractor(nn.Module):
                              level_start_index=level_start_index, key_padding_mask=None)
             # residual connection has been added inside of msdeformable attention
             query = attn
-            print('query.shape:', query.shape)
             if self.with_cffn:
                 query = query + self.drop_path(self.ffn(self.ffn_norm(query), H, W, stage_index))
             return query
