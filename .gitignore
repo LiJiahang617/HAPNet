@@ -162,3 +162,5 @@ data/
 MF_RGBT.zip
 train_nyu.sh
 train_nyu_mscan.sh
+.vscode/
+mmsegmentation.egg-info/
