@@ -42,7 +42,7 @@ from .modulated_deform_conv import (ModulatedDeformConv2d,
                                     ModulatedDeformConv2dPack,
                                     ModulatedDeformConv2dMask,
                                     modulated_deform_conv2d)
-from .multi_scale_deform_attn import MultiScaleDeformableAttention
+from .multi_scale_deform_attn import MultiScaleDeformableAttention, MultiScaleDeformableAttnFunction
 from .nms import batched_nms, nms, nms_match, nms_quadri, nms_rotated, soft_nms
 from .pixel_group import pixel_group
 from .point_sample import (SimpleRoIAlign, point_sample,
@@ -83,7 +83,7 @@ __all__ = [
     'SoftmaxFocalLoss', 'sigmoid_focal_loss', 'softmax_focal_loss',
     'get_compiler_version', 'get_compiling_cuda_version', 'MaskedConv2d',
     'masked_conv2d', 'ModulatedDeformConv2d', 'ModulatedDeformConv2dPack',
-    'ModulatedDeformConv2dMask',
+    'ModulatedDeformConv2dMask', 'MultiScaleDeformableAttnFunction',
     'modulated_deform_conv2d', 'batched_nms', 'nms', 'soft_nms', 'nms_match',
     'RoIAlign', 'roi_align', 'RoIPool', 'roi_pool', 'SyncBatchNorm', 'Conv2d',
     'ConvTranspose2d', 'Linear', 'MaxPool2d', 'CrissCrossAttention', 'PSAMask',

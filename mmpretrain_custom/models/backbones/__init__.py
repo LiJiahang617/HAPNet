@@ -4,8 +4,9 @@ from .convnext import ConvNeXt
 from .share_convnext import ShareConvNeXt
 from .sumtwin_convnext import SumTwinConvNeXt
 from .convnext_adapter import ConvNeXtAdapter
+from .beit_adapter import BEiTAdapter
 
 __all__ = [
-    'ConvNeXt', 'ShareConvNeXt',
+    'ConvNeXt', 'ShareConvNeXt', 'BEiTAdapter',
     'TwinConvNeXt', 'SumTwinConvNeXt', 'ConvNeXtAdapter'
 ]
