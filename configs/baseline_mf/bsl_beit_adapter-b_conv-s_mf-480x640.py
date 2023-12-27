@@ -3,7 +3,7 @@ _base_ = [
 ]
 
 convnext_pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-small_3rdparty_32xb128-noema_in1k_20220301-303e75e3.pth'
-
+pretrained = 'https://conversationhub.blob.core.windows.net/beit-share-public/beit/beit_base_patch16_224_pt22k_ft22k.pth'
 crop_size = (480, 640) # h, w
 data_preprocessor = dict(
     type='SegDataPreProcessor',
