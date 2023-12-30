@@ -41,7 +41,7 @@ test_pipeline = [
     dict(type='PackSegInputs')
 ]
 train_dataloader = dict(
-    batch_size=4,
+    batch_size=1,
     num_workers=40,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -93,7 +93,7 @@ val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU', 'mFscore'])
 test_evaluator = val_evaluator
 
 convnext_pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-small_3rdparty_32xb128-noema_in1k_20220301-303e75e3.pth'
-beit_pretrained = '/remote-home/jhli/TIV/TIV/pretrained/beitv2_base_patch16_224_pt1k_ft21k.pth'
+beit_pretrained = '/remote-home/jhli/TIV/TIV/pretrained/beitv2_large_patch16_224_pt1k_ft21k (1).pth'
 
 
 data_preprocessor = dict(
@@ -115,21 +115,21 @@ model = dict(
         pretrained=beit_pretrained,
         img_size=480,
         patch_size=16,
-        embed_dim=768,
-        depth=12,
-        num_heads=12,
+        embed_dim=1024,
+        depth=24,
+        num_heads=16,
         mlp_ratio=4,
         qkv_bias=True,
         use_abs_pos_emb=False,
         use_rel_pos_bias=True,
         init_values=1e-6,
-        drop_path_rate=0.2,
+        drop_path_rate=0.3,
         n_points=4,
-        deform_num_heads=12,
+        deform_num_heads=16,
         cffn_ratio=0.25,
         deform_ratio=0.5,
         with_cp=True,  # set with_cp=True to save memory
-        interaction_indexes=[[0, 2], [3, 5], [6, 8], [9, 11]],
+        interaction_indexes=[[0, 5], [6, 11], [12, 17], [18, 23]],
         # this param is to link with x_modality_encoder
         arch='small',
         x_modality_encoder=dict(
@@ -144,10 +144,10 @@ model = dict(
                 prefix='backbone.'))),
     decode_head=dict(
         type='Mask2FormerHead',
-        in_channels=[768, 768, 768, 768],  # modified here
+        in_channels=[1024, 1024, 1024, 1024],  # modified here
         strides=[4, 8, 16, 32],
-        feat_channels=256,
-        out_channels=256,
+        feat_channels=1024,
+        out_channels=1024,
         num_classes=num_classes,
         num_queries=100,
         num_transformer_feat_level=3,
@@ -161,8 +161,8 @@ model = dict(
                 num_layers=6,
                 layer_cfg=dict(  # DeformableDetrTransformerEncoderLayer
                     self_attn_cfg=dict(  # MultiScaleDeformableAttention
-                        embed_dims=256,
-                        num_heads=8,
+                        embed_dims=1024,
+                        num_heads=32,
                         num_levels=3,
                         num_points=4,
                         im2col_step=64,
@@ -171,39 +171,39 @@ model = dict(
                         norm_cfg=None,
                         init_cfg=None),
                     ffn_cfg=dict(
-                        embed_dims=256,
-                        feedforward_channels=1024,
+                        embed_dims=1024,
+                        feedforward_channels=4096,
                         num_fcs=2,
                         ffn_drop=0.0,
                         act_cfg=dict(type='ReLU', inplace=True))),
                 init_cfg=None),
             positional_encoding=dict(  # SinePositionalEncoding
-                num_feats=128, normalize=True),
+                num_feats=512, normalize=True),
             init_cfg=None),
         enforce_decoder_input_project=False,
         positional_encoding=dict(  # SinePositionalEncoding
-            num_feats=128, normalize=True),
+            num_feats=512, normalize=True),
         transformer_decoder=dict(  # Mask2FormerTransformerDecoder
             return_intermediate=True,
             num_layers=9,
             layer_cfg=dict(  # Mask2FormerTransformerDecoderLayer
                 self_attn_cfg=dict(  # MultiheadAttention
-                    embed_dims=256,
-                    num_heads=8,
+                    embed_dims=1024,
+                    num_heads=32,
                     attn_drop=0.0,
                     proj_drop=0.0,
                     dropout_layer=None,
-                    batch_first=True),
+                    batch_first=True), # is it important?
                 cross_attn_cfg=dict(  # MultiheadAttention
-                    embed_dims=256,
-                    num_heads=8,
+                    embed_dims=1024,
+                    num_heads=32,
                     attn_drop=0.0,
                     proj_drop=0.0,
                     dropout_layer=None,
                     batch_first=True),
                 ffn_cfg=dict(
-                    embed_dims=256,
-                    feedforward_channels=2048,
+                    embed_dims=1024,
+                    feedforward_channels=4096,
                     num_fcs=2,
                     act_cfg=dict(type='ReLU', inplace=True),
                     ffn_drop=0.0,
@@ -295,7 +295,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet", name="beit-adapter-b_convnext-s_bslhead")),
+                dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet", name="beit-adapter-l_convnext-s_bslhead")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
