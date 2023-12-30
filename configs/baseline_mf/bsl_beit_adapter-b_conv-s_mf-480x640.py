@@ -1,10 +1,101 @@
-_base_ = [
-'../_base_/datasets/mmmf_0-1_640x480.py'
+# dataset settings
+dataset_type = 'MMMFDataset'
+data_root = '/remote-home/jhli/TIV/TIV/data/MF_RGBT'
+
+# vit-adapter needs square, so crop must has h==w
+crop_size = (480, 480) # h, w
+img_size = (480, 640) # h, w
+
+train_pipeline = [
+    # modality value must be modified
+    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
+    dict(type='StackByChannel', keys=('img', 'ano')),
+    dict(type='LoadAnnotations', reduce_zero_label=False),
+    dict(
+        type='RandomChoiceResize',
+        scales=[int(640 * x * 0.1) for x in range(5, 20)],
+        resize_type='ResizeShortestEdge',
+        max_size=1280),  # Note: w, h instead of h, w
+    dict(type='RandomCrop', crop_size=crop_size, cat_max_ratio=0.75),
+    dict(type='RandomFlip', prob=0.5),
+    dict(type='PackSegInputs')
 ]
+val_pipeline = [
+    # modality value must be modified
+    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
+    dict(type='StackByChannel', keys=('img', 'ano')),
+    dict(
+        type='Resize',
+        scale=crop_size, keep_ratio=False),  # Note: w, h instead of h, w
+    # add loading annotation after ``Resize`` because ground truth
+    # does not need to do resize data transform
+    dict(type='LoadAnnotations', reduce_zero_label=False),
+    dict(type='PackSegInputs')
+]
+test_pipeline = [
+    # modality value must be modified
+    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
+    dict(type='StackByChannel', keys=('img', 'ano')),
+    dict(type='Resize', scale=crop_size, keep_ratio=False),
+    dict(type='LoadAnnotations', reduce_zero_label=False),
+    dict(type='PackSegInputs')
+]
+train_dataloader = dict(
+    batch_size=2,
+    num_workers=16,
+    persistent_workers=True,
+    sampler=dict(type='DefaultSampler', shuffle=True),
+    dataset=dict(
+        type=dataset_type,
+        data_root=data_root,
+        reduce_zero_label=False,
+        # have to modify next 2 properties at the same time
+        modality='thermal',
+        data_prefix=dict(
+            img_path='images/train',
+            thermal_path='thermal/train',
+            seg_map_path='labels/train'),
+        pipeline=train_pipeline))
+val_dataloader = dict(
+    batch_size=1,
+    num_workers=16,
+    persistent_workers=True,
+    sampler=dict(type='DefaultSampler', shuffle=False),
+    dataset=dict(
+        type=dataset_type,
+        data_root=data_root,
+        reduce_zero_label=False,
+        # have to modify next 2 properties at the same time
+        modality='thermal',
+        data_prefix=dict(
+            img_path='images/test',
+            thermal_path='thermal/test',
+            seg_map_path='labels/test'),
+        pipeline=val_pipeline))
+test_dataloader = dict(
+    batch_size=1,
+    num_workers=16,
+    persistent_workers=True,
+    sampler=dict(type='DefaultSampler', shuffle=False),
+    dataset=dict(
+        type=dataset_type,
+        data_root=data_root,
+        reduce_zero_label=False,
+        # have to modify next 2 properties at the same time
+        modality='thermal',
+        data_prefix=dict(
+            img_path='images/test',
+            thermal_path='thermal/test',
+            seg_map_path='labels/test'),
+        pipeline=test_pipeline))
+
+val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU', 'mFscore'])
+test_evaluator = val_evaluator
 
 convnext_pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-small_3rdparty_32xb128-noema_in1k_20220301-303e75e3.pth'
-pretrained = 'https://conversationhub.blob.core.windows.net/beit-share-public/beit/beit_base_patch16_224_pt22k_ft22k.pth'
-crop_size = (480, 640) # h, w
+beit_pretrained = '/remote-home/jhli/TIV/TIV/pretrained/beitv2_base_patch16_224_pt1k_ft21k.pth'
+
+
 data_preprocessor = dict(
     type='SegDataPreProcessor',
     mean=[0.485, 0.456, 0.406, 0, 0, 0], # depth images in NYU has 3 channels
@@ -14,35 +105,35 @@ data_preprocessor = dict(
     seg_pad_val=255,
     size=crop_size)
 num_classes = 9
-# dataset settings
-train_dataloader = dict(batch_size=5, num_workers=40)
 
+# model setting
 model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
     backbone=dict(
-        type='BEiTAdapter',
-        img_size=896,
+        type='mmpretrain_custom.BEiTAdapter',
+        pretrained=beit_pretrained,
+        img_size=480,
         patch_size=16,
-        embed_dim=1024,
-        depth=24,
-        num_heads=16,
+        embed_dim=768,
+        depth=12,
+        num_heads=12,
         mlp_ratio=4,
         qkv_bias=True,
         use_abs_pos_emb=False,
         use_rel_pos_bias=True,
         init_values=1e-6,
-        drop_path_rate=0.3,
-        conv_inplane=64,
+        drop_path_rate=0.2,
         n_points=4,
-        deform_num_heads=16,
+        deform_num_heads=12,
         cffn_ratio=0.25,
         deform_ratio=0.5,
         with_cp=True,  # set with_cp=True to save memory
-        interaction_indexes=[[0, 5], [6, 11], [12, 17], [18, 23]],
+        interaction_indexes=[[0, 2], [3, 5], [6, 8], [9, 11]],
+        # this param is to link with x_modality_encoder
         arch='small',
         x_modality_encoder=dict(
-            type='mmpretrain_custom.ConvNeXtAdapter',
+            type='mmpretrain_custom.ConvNeXt',
             arch='small',
             out_indices=[0, 1, 2, 3],
             drop_path_rate=0.3,
@@ -53,7 +144,7 @@ model = dict(
                 prefix='backbone.'))),
     decode_head=dict(
         type='Mask2FormerHead',
-        in_channels=[96, 192, 384, 768],  # modified here
+        in_channels=[768, 768, 768, 768],  # modified here
         strides=[4, 8, 16, 32],
         feat_channels=256,
         out_channels=256,
@@ -158,7 +249,7 @@ model = dict(
                 ]),
             sampler=dict(type='mmdet_custom.MaskPseudoSampler'))),
     train_cfg=dict(),
-    test_cfg=dict(mode='whole'))
+    test_cfg=dict(mode='slide', crop_size=crop_size, stride=(160, 160)))
 
 # optimizer
 optimizer = dict(

@@ -4,11 +4,14 @@ from functools import partial
 from collections import OrderedDict
 import warnings
 
+from scipy import interpolate
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as cp
 from mmengine_custom.runner import CheckpointLoader
+from mmengine_custom.dist import get_dist_info
 from mmengine_custom.model.weight_init import (constant_init, trunc_normal_,
                                                trunc_normal_init)
 from mmengine_custom.logging import print_log
@@ -72,6 +75,7 @@ def drop_path(x: torch.Tensor,
 class DropPath(nn.Module):
     """Drop paths (Stochastic Depth) per sample  (when applied in main path of
     residual blocks)."""
+
     def __init__(self, drop_prob=None):
         super(DropPath, self).__init__()
         self.drop_prob = drop_prob
@@ -105,8 +109,8 @@ class Mlp(nn.Module):
 
 
 class Attention(nn.Module):
-    def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0.,
-                 proj_drop=0., window_size=None, attn_head_dim=None, windowed=False):
+    def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None,
+                 attn_drop=0., proj_drop=0., window_size=None, attn_head_dim=None, windowed=False):
         super().__init__()
         self.num_heads = num_heads
         self.windowed = windowed
@@ -116,7 +120,7 @@ class Attention(nn.Module):
             head_dim = attn_head_dim
         all_head_dim = head_dim * self.num_heads
         # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
-        self.scale = qk_scale or head_dim**-0.5
+        self.scale = qk_scale or head_dim ** -0.5
 
         self.qkv = nn.Linear(dim, all_head_dim * 3, bias=False)
         if qkv_bias:
@@ -126,107 +130,86 @@ class Attention(nn.Module):
             self.q_bias = None
             self.v_bias = None
 
-        self.window_size = window_size
-        self.num_relative_distance = (2 * window_size - 1) * (2 * window_size -
-                                                              1)
-        self.relative_position_bias_table = nn.Parameter(
-            torch.zeros(self.num_relative_distance, num_heads))  # 2*Wh-1 * 2*Ww-1, nH
-        # cls to token & token 2 cls & cls to cls
+        if window_size:
+            self.window_size = window_size
+            self.num_relative_distance = (2 * window_size[0] - 1) * (2 * window_size[1] - 1) + 3 # 目前不同点：这里有索引
 
-        # get pair-wise relative position index for each token inside the window
-        coords_h = torch.arange(window_size)
-        coords_w = torch.arange(window_size)
-        coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
-        coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
-        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
-        relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
-        relative_coords[:, :, 0] += window_size - 1  # shift to start from 0
-        relative_coords[:, :, 1] += window_size - 1
-        relative_coords[:, :, 0] *= 2 * window_size - 1
-        relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
-        self.register_buffer('relative_position_index', relative_position_index)
+            self.relative_position_bias_table = nn.Parameter(
+                torch.zeros(self.num_relative_distance, num_heads))  # 2*Wh-1 * 2*Ww-1, nH
+            # cls to token & token 2 cls & cls to cls
+            # TODO: check implementation difference in mmdet/mmseg
+            # get pair-wise relative position index for each token inside the window
+            coords_h = torch.arange(window_size[0]) # 目前不同点：这里有索引
+            coords_w = torch.arange(window_size[1]) # 目前不同点：这里有索引
+            coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
+            coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
+            relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
+            relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
+            relative_coords[:, :, 0] += window_size[0] - 1  # shift to start from 0 # 目前不同点：这里有索引
+            relative_coords[:, :, 1] += window_size[1] - 1 # 目前不同点：这里有索引
+            relative_coords[:, :, 0] *= 2 * window_size[1] - 1 # 目前不同点：这里有索引
+            relative_position_index = \
+                torch.zeros(size=(window_size[0] * window_size[1] + 1,) * 2, dtype=relative_coords.dtype) # 目前不同点：这里索引
+            relative_position_index[1:, 1:] = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
+            relative_position_index[0, 0:] = self.num_relative_distance - 3
+            relative_position_index[0:, 0] = self.num_relative_distance - 2
+            relative_position_index[0, 0] = self.num_relative_distance - 1
+            self.register_buffer("relative_position_index", relative_position_index)
 
-        self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(all_head_dim, dim)
-        self.proj_drop = nn.Dropout(proj_drop)
+            self.attn_drop = nn.Dropout(attn_drop)
+            self.proj = nn.Linear(all_head_dim, dim)
+            self.proj_drop = nn.Dropout(proj_drop)
 
     def forward(self, x, H, W, rel_pos_bias=None):
-        def _attn_forward(x):
-            B, N, C = x.shape
-            qkv_bias = None
-            if self.q_bias is not None:
-                qkv_bias = torch.cat((self.q_bias, torch.zeros_like(self.v_bias,
-                                      requires_grad=False), self.v_bias))
-            # qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-            qkv = F.linear(input=x, weight=self.qkv.weight, bias=qkv_bias)
-            qkv = qkv.reshape(B, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
-            q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
-
-            q = q * self.scale
-            attn = (q @ k.transpose(-2, -1))
-
-            if self.relative_position_bias_table is not None:
-                relative_position_bias = \
-                    self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
-                        self.window_size * self.window_size,
-                        self.window_size * self.window_size, -1)  # Wh*Ww,Wh*Ww,nH
-                relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
-                # relative_position_bias = relative_position_bias[:, 1:, 1:]
-                attn = attn + relative_position_bias.unsqueeze(0)
-
-            if rel_pos_bias is not None:
-                attn = attn + rel_pos_bias
-
-            attn = attn.softmax(dim=-1)
-            attn = self.attn_drop(attn)
-
-            x = (attn @ v).transpose(1, 2).reshape(B, N, -1)
-            x = self.proj(x)
-            x = self.proj_drop(x)
-            return x
-
-        if not self.windowed:
-            return _attn_forward(x)
-        else:
-            B, L, C = x.shape
-            x = x.view(B, H, W, C)
-
-            # N_ = self.window_size * self.window_size
-            H_ = math.ceil(H / self.window_size) * self.window_size
-            W_ = math.ceil(W / self.window_size) * self.window_size
-            x = F.pad(x, [0, 0, 0, W_ - W, 0, H_ - H])
-
-            # partition windows
-            x = window_partition(
-                x, self.window_size)  # nW*B, window_size, window_size, C
-            x = x.view(-1, self.window_size * self.window_size, C)  # nW*B, window_size*window_size, C
-            x = _attn_forward(x)
-            # merge windows
-            x = x.view(-1, self.window_size, self.window_size, C)
-            x = window_reverse(x, self.window_size, H_, W_)  # B H' W' C
-            x = x[:, :H, :W, :].reshape(B, H * W, C)
-            return x
+        B, N, C = x.shape
+        qkv_bias = None
+        if self.q_bias is not None:
+            qkv_bias = torch.cat((self.q_bias, torch.zeros_like(self.v_bias, requires_grad=False), self.v_bias))
+        # qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+        qkv = F.linear(input=x, weight=self.qkv.weight, bias=qkv_bias)
+        qkv = qkv.reshape(B, N, 3, self.num_heads, -1).permute(2, 0, 3, 1, 4)
+        q, k, v = qkv[0], qkv[1], qkv[2]  # make torchscript happy (cannot use tensor as tuple)
+        
+        q = q * self.scale
+        attn = (q @ k.transpose(-2, -1))
+        # 这里会报错，必须用mmseg的实现 否则形状对不上 901/197
+        if self.relative_position_bias_table is not None:
+            relative_position_bias = \
+                self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
+                    self.window_size[0] * self.window_size[1] + 1,
+                    self.window_size[0] * self.window_size[1] + 1, -1)  # Wh*Ww,Wh*Ww,nH
+            relative_position_bias = relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
+            # relative_position_bias = relative_position_bias[:, 1:, 1:]
+            attn = attn + relative_position_bias.unsqueeze(0)
+        
+        if rel_pos_bias is not None:
+            attn = attn + rel_pos_bias
+        
+        attn = attn.softmax(dim=-1)
+        attn = self.attn_drop(attn)
+        
+        x = (attn @ v).transpose(1, 2).reshape(B, N, -1)
+        x = self.proj(x)
+        x = self.proj_drop(x)
+        return x
 
 
 class Block(nn.Module):
-    def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None,
-                 drop=0., attn_drop=0., drop_path=0., init_values=None, act_layer=nn.GELU,
-                 norm_layer=nn.LayerNorm, window_size=None, windowed=False, attn_head_dim=None,
-                 with_cp=False):
+
+    def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
+                 drop_path=0., init_values=None, act_layer=nn.GELU, norm_layer=nn.LayerNorm,
+                 window_size=None, attn_head_dim=None, with_cp=False):
         super().__init__()
         self.with_cp = with_cp
         self.norm1 = norm_layer(dim)
-
-        self.attn = Attention(dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale,
-                              attn_drop=attn_drop, proj_drop=drop, window_size=window_size,
-                              attn_head_dim=attn_head_dim, windowed=windowed)
-
+        self.attn = Attention(
+            dim, num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale,
+            attn_drop=attn_drop, proj_drop=drop, window_size=window_size, attn_head_dim=attn_head_dim)
         # NOTE: drop path for stochastic depth, we shall see if this is better than dropout here
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
-        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim,
-                       act_layer=act_layer, drop=drop)
+        self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
         if init_values is not None:
             self.gamma_1 = nn.Parameter(init_values * torch.ones((dim)), requires_grad=True)
@@ -237,12 +220,10 @@ class Block(nn.Module):
     def forward(self, x, H, W, rel_pos_bias=None):
         def _inner_forward(x):
             if self.gamma_1 is None:
-                x = x + self.drop_path(
-                    self.attn(self.norm1(x), H, W, rel_pos_bias=rel_pos_bias))
+                x = x + self.drop_path(self.attn(self.norm1(x), H, W, rel_pos_bias=rel_pos_bias))
                 x = x + self.drop_path(self.mlp(self.norm2(x)))
             else:
-                x = x + self.drop_path(self.gamma_1 * self.attn(
-                    self.norm1(x), H, W, rel_pos_bias=rel_pos_bias))
+                x = x + self.drop_path(self.gamma_1 * self.attn(self.norm1(x), H, W, rel_pos_bias=rel_pos_bias))
                 x = x + self.drop_path(self.gamma_2 * self.mlp(self.norm2(x)))
             return x
 
@@ -254,14 +235,15 @@ class Block(nn.Module):
 
 
 class PatchEmbed(nn.Module):
-    """Image to Patch Embedding."""
+    """ Image to Patch Embedding
+    """
+
     def __init__(self, img_size=224, patch_size=16, in_chans=3, embed_dim=768):
         super().__init__()
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
         num_patches = (img_size[1] // patch_size[1]) * (img_size[0] // patch_size[0])
-        self.patch_shape = (img_size[0] // patch_size[0],
-                            img_size[1] // patch_size[1])
+        self.patch_shape = (img_size[0] // patch_size[0], img_size[1] // patch_size[1]) # 30
         self.img_size = img_size
         self.patch_size = patch_size
         self.num_patches = num_patches
@@ -281,8 +263,10 @@ class PatchEmbed(nn.Module):
 
 
 class HybridEmbed(nn.Module):
-    """CNN Feature Map Embedding Extract feature map from CNN, flatten, project
-    to embedding dim."""
+    """ CNN Feature Map Embedding
+    Extract feature map from CNN, flatten, project to embedding dim.
+    """
+
     def __init__(self, backbone, img_size=224, feature_size=None, in_chans=3, embed_dim=768):
         super().__init__()
         assert isinstance(backbone, nn.Module)
@@ -315,42 +299,48 @@ class HybridEmbed(nn.Module):
 
 
 class RelativePositionBias(nn.Module):
+
     def __init__(self, window_size, num_heads):
         super().__init__()
-        self.window_size = to_2tuple(window_size)
-        self.num_relative_distance = (2 * window_size - 1) * (2 * window_size - 1)
+        self.window_size = window_size
+        self.num_relative_distance = (2 * window_size[0] - 1) * (2 * window_size[1] - 1) + 3
         self.relative_position_bias_table = nn.Parameter(
             torch.zeros(self.num_relative_distance, num_heads))  # 2*Wh-1 * 2*Ww-1, nH
         # cls to token & token 2 cls & cls to cls
 
         # get pair-wise relative position index for each token inside the window
-        coords_h = torch.arange(window_size)
-        coords_w = torch.arange(window_size)
+        coords_h = torch.arange(window_size[0])
+        coords_w = torch.arange(window_size[1])
         coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
         coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
-        relative_coords = coords_flatten[:, :, None] - \
-                          coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
+        relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]  # 2, Wh*Ww, Wh*Ww
         relative_coords = relative_coords.permute(1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
-        relative_coords[:, :, 0] += window_size - 1  # shift to start from 0
-        relative_coords[:, :, 1] += window_size - 1
-        relative_coords[:, :, 0] *= 2 * window_size - 1
-        relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
+        relative_coords[:, :, 0] += window_size[0] - 1  # shift to start from 0
+        relative_coords[:, :, 1] += window_size[1] - 1
+        relative_coords[:, :, 0] *= 2 * window_size[1] - 1
+        relative_position_index = \
+            torch.zeros(size=(window_size[0] * window_size[1] + 1,) * 2, dtype=relative_coords.dtype)
+        relative_position_index[1:, 1:] = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
+        relative_position_index[0, 0:] = self.num_relative_distance - 3
+        relative_position_index[0:, 0] = self.num_relative_distance - 2
+        relative_position_index[0, 0] = self.num_relative_distance - 1
 
-        self.register_buffer('relative_position_index', relative_position_index)
+        self.register_buffer("relative_position_index", relative_position_index)
 
         # trunc_normal_(self.relative_position_bias_table, std=.02)
 
     def forward(self):
         relative_position_bias = \
             self.relative_position_bias_table[self.relative_position_index.view(-1)].view(
-                self.window_size * self.window_size, self.window_size * self.window_size, -1)  # Wh*Ww,Wh*Ww,nH
+                self.window_size[0] * self.window_size[1] + 1,
+                self.window_size[0] * self.window_size[1] + 1, -1)  # Wh*Ww,Wh*Ww,nH
         return relative_position_bias.permute(2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
 
 
 @MODELS.register_module()
 class BEiT(BaseBackbone):
     """Vision Transformer with support for patch or hybrid CNN input stage."""
-    def __init__(self, img_size=512, patch_size=16, in_chans=3, num_classes=80,
+    def __init__(self, img_size=512, patch_size=16, in_chans=3,
                  embed_dim=768, depth=12, num_heads=12, mlp_ratio=4., qkv_bias=False,
                  qk_scale=None, drop_rate=0., attn_drop_rate=0., drop_path_rate=0.,
                  hybrid_backbone=None, norm_layer=None, init_values=None, use_checkpoint=False,
@@ -360,8 +350,6 @@ class BEiT(BaseBackbone):
         assert not (init_cfg and pretrained), \
             'init_cfg and pretrained cannot be specified at the same time'
         if isinstance(pretrained, str):
-            warnings.warn('DeprecationWarning: pretrained is deprecated, '
-                          'please use "init_cfg" instead')
             init_cfg = dict(type='Pretrained', checkpoint=pretrained)
         elif pretrained is None:
             init_cfg = init_cfg
@@ -389,17 +377,17 @@ class BEiT(BaseBackbone):
                                           in_chans=in_chans, embed_dim=embed_dim)
         num_patches = self.patch_embed.num_patches
 
-        # self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
 
         # self.mask_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         if use_abs_pos_emb:
-            self.pos_embed = nn.Parameter(torch.zeros(1, num_patches, embed_dim))
+            self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim))
         else:
             self.pos_embed = None
         self.pos_drop = nn.Dropout(p=drop_rate)
 
-        if use_shared_rel_pos_bias:
-            self.rel_pos_bias = RelativePositionBias(window_size=window_size[0], num_heads=num_heads)
+        if use_shared_rel_pos_bias: # False not use
+            self.rel_pos_bias = RelativePositionBias(window_size=self.patch_embed.patch_shape, num_heads=num_heads)
         else:
             self.rel_pos_bias = None
 
@@ -408,16 +396,15 @@ class BEiT(BaseBackbone):
         self.use_rel_pos_bias = use_rel_pos_bias
         self.use_checkpoint = use_checkpoint
         self.blocks = nn.ModuleList([
-            Block(dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio,
-                  qkv_bias=qkv_bias, qk_scale=qk_scale, drop=drop_rate,
-                  attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer,
-                  with_cp=with_cp, init_values=init_values, windowed=window_attn[i],
-                  window_size=window_size[i]) for i in range(depth)
-        ])
+            Block(
+                dim=embed_dim, num_heads=num_heads, mlp_ratio=mlp_ratio, qkv_bias=qkv_bias, qk_scale=qk_scale,
+                drop=drop_rate, attn_drop=attn_drop_rate, drop_path=dpr[i], norm_layer=norm_layer, with_cp=with_cp,
+                init_values=init_values, window_size=self.patch_embed.patch_shape if use_rel_pos_bias else None)
+            for i in range(depth)])
 
-        if self.pos_embed is not None:
-            trunc_normal_(self.pos_embed, std=.02)
-        # trunc_normal_(self.cls_token, std=.02)
+        # if self.pos_embed is not None:
+        #     trunc_normal_(self.pos_embed, std=.02)
+        trunc_normal_(self.cls_token, std=.02)
         self.apply(self._init_weights)
         self.init_weights()
 
@@ -433,6 +420,7 @@ class BEiT(BaseBackbone):
             nn.init.constant_(m.weight, 1.0)
 
     def init_weights(self):
+        # customed by Kobe Li for size mismatch bugs in 2312227 in loading pretrained
         if self.init_cfg is None:
             print_log(f'No pre-trained weights for '
                       f'{self.__class__.__name__}, '
@@ -455,6 +443,93 @@ class BEiT(BaseBackbone):
                 _state_dict = ckpt['model']
             else:
                 _state_dict = ckpt
+            # reshape relative position embedding for Beit
+            rank, _ = get_dist_info()
+            if 'rel_pos_bias.relative_position_bias_table' in _state_dict:
+                if rank == 0:
+                    print(
+                        'Expand the shared relative position embedding to each layers. '
+                    )
+                    num_layers = self.get_num_layers()
+                    rel_pos_bias = _state_dict[
+                        'rel_pos_bias.relative_position_bias_table']
+                    for i in range(num_layers):
+                        _state_dict['blocks.%d.attn.relative_position_bias_table' %
+                                   i] = rel_pos_bias.clone()
+
+                _state_dict.pop('rel_pos_bias.relative_position_bias_table')
+
+            all_keys = list(_state_dict.keys())
+            for key in all_keys:
+                if 'relative_position_index' in key:
+                    _state_dict.pop(key)
+
+                if 'relative_position_bias_table' in key:
+                    rel_pos_bias = _state_dict[key]
+                    src_num_pos, num_attn_heads = rel_pos_bias.size()
+                    dst_num_pos, _ = self.state_dict()[key].size()
+                    dst_patch_shape = self.patch_embed.patch_shape
+                    if dst_patch_shape[0] != dst_patch_shape[1]:
+                        raise NotImplementedError()
+                    num_extra_tokens = dst_num_pos - (dst_patch_shape[0] * 2 -
+                                                      1) * (dst_patch_shape[1] * 2 - 1)
+                    src_size = int((src_num_pos - num_extra_tokens) ** 0.5)
+                    dst_size = int((dst_num_pos - num_extra_tokens) ** 0.5)
+                    if src_size != dst_size:
+                        if rank == 0:
+                            print('Position interpolate for %s from %dx%d to %dx%d' %
+                                  (key, src_size, src_size, dst_size, dst_size))
+                        extra_tokens = rel_pos_bias[-num_extra_tokens:, :]
+                        rel_pos_bias = rel_pos_bias[:-num_extra_tokens, :]
+
+                        def geometric_progression(a, r, n):
+                            return a * (1.0 - r ** n) / (1.0 - r)
+
+                        left, right = 1.01, 1.5
+                        while right - left > 1e-6:
+                            q = (left + right) / 2.0
+                            gp = geometric_progression(1, q, src_size // 2)
+                            if gp > dst_size // 2:
+                                right = q
+                            else:
+                                left = q
+
+                        # if q > 1.13492:
+                        #     q = 1.13492
+
+                        dis = []
+                        cur = 1
+                        for i in range(src_size // 2):
+                            dis.append(cur)
+                            cur += q ** (i + 1)
+
+                        r_ids = [-_ for _ in reversed(dis)]
+
+                        x = r_ids + [0] + dis
+                        y = r_ids + [0] + dis
+
+                        t = dst_size // 2.0
+                        dx = np.arange(-t, t + 0.1, 1.0)
+                        dy = np.arange(-t, t + 0.1, 1.0)
+                        # if rank == 0:
+                            # print('x = {}'.format(x))
+                            # print('dx = {}'.format(dx))
+
+                        all_rel_pos_bias = []
+
+                        for i in range(num_attn_heads):
+                            z = rel_pos_bias[:, i].view(src_size,
+                                                        src_size).float().numpy()
+                            f = interpolate.interp2d(x, y, z, kind='cubic')
+                            all_rel_pos_bias.append(
+                                torch.Tensor(f(dx, dy)).contiguous().view(-1, 1).to(
+                                    rel_pos_bias.device))
+
+                        rel_pos_bias = torch.cat(all_rel_pos_bias, dim=-1)
+                        new_rel_pos_bias = torch.cat((rel_pos_bias, extra_tokens),
+                                                     dim=0)
+                        _state_dict[key] = new_rel_pos_bias
+
 
             state_dict = OrderedDict()
             for k, v in _state_dict.items():

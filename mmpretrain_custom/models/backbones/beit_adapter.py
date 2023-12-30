@@ -168,7 +168,7 @@ class Injector(nn.Module):
         return query
 
 
-class InteractionBlock(nn.Module):
+class InteractionBlockWithCls(nn.Module):
     def __init__(self, dim, num_heads=6, n_points=4, norm_layer=partial(nn.LayerNorm, eps=1e-6),
                  drop=0., drop_path=0., with_cffn=True, cffn_ratio=0.25, init_values=0.,
                  deform_ratio=1.0, extra_extractor=False, with_cp=False):
@@ -190,12 +190,14 @@ class InteractionBlock(nn.Module):
         else:
             self.extra_extractors = None
 
-    def forward(self, x, c, blocks, deform_inputs1, deform_inputs2, H, W):
+    def forward(self, x, c, cls, blocks, deform_inputs1, deform_inputs2, H, W):
         x = self.injector(query=x, reference_points=deform_inputs1[0],
                           feat=c, spatial_shapes=deform_inputs1[1],
                           level_start_index=deform_inputs1[2])
+        x = torch.cat((cls, x), dim=1)
         for idx, blk in enumerate(blocks):
             x = blk(x, H, W)
+        cls, x = x[:, :1, ], x[:, 1:, ]
         c = self.extractor(query=c, reference_points=deform_inputs2[0],
                            feat=x, spatial_shapes=deform_inputs2[1],
                            level_start_index=deform_inputs2[2], H=H, W=W)
@@ -204,7 +206,7 @@ class InteractionBlock(nn.Module):
                 c = extractor(query=c, reference_points=deform_inputs2[0],
                               feat=x, spatial_shapes=deform_inputs2[1],
                               level_start_index=deform_inputs2[2], H=H, W=W)
-        return x, c
+        return x, c, cls
 
 
 def _is_power_of_2(n):
@@ -375,9 +377,11 @@ class BEiTAdapter(BEiT):
         self.version = version
         self.num_block = len(self.blocks)
         self.pretrain_size = (pretrain_size, pretrain_size)
+        self.flags = [i for i in range(-1, self.num_block, self.num_block // 4)][1:]
         self.interaction_indexes = interaction_indexes
         self.add_vit_feature = add_vit_feature
         embed_dim = self.embed_dim
+
         print('Use embed dims of ----->>>', embed_dim, '<<<-----')
         if isinstance(arch, str):
             assert arch in self.arch_settings, \
@@ -396,7 +400,7 @@ class BEiTAdapter(BEiT):
         """
         self.x_modality_encoder = MODELS.build(x_modality_encoder_)
         self.interactions = nn.Sequential(*[
-            InteractionBlock(dim=embed_dim, num_heads=deform_num_heads, n_points=n_points,
+            InteractionBlockWithCls(dim=embed_dim, num_heads=deform_num_heads, n_points=n_points,
                              init_values=init_values, drop_path=self.drop_path_rate,
                              norm_layer=self.norm_layer, with_cffn=with_cffn,
                              cffn_ratio=cffn_ratio, deform_ratio=deform_ratio,
@@ -411,16 +415,18 @@ class BEiTAdapter(BEiT):
         self.norm3 = nn.SyncBatchNorm(embed_dim)
         self.norm4 = nn.SyncBatchNorm(embed_dim)
         # for unify x_modality_features to same channels
-        self.fc1 = nn.Conv2d(encoder_channels[0], embed_dim, kernel_size=1, stride=1, padding=0, bias=True)
-        self.fc2 = nn.Conv2d(encoder_channels[1], embed_dim, kernel_size=1, stride=1, padding=0, bias=True)
-        self.fc3 = nn.Conv2d(encoder_channels[2], embed_dim, kernel_size=1, stride=1, padding=0, bias=True)
-        self.fc4 = nn.Conv2d(encoder_channels[3], embed_dim, kernel_size=1, stride=1, padding=0, bias=True)
-
+        self.fc1 = nn.Conv2d(self.x_channels[0], embed_dim, kernel_size=1, stride=1, padding=0, bias=True)
+        self.fc2 = nn.Conv2d(self.x_channels[1], embed_dim, kernel_size=1, stride=1, padding=0, bias=True)
+        self.fc3 = nn.Conv2d(self.x_channels[2], embed_dim, kernel_size=1, stride=1, padding=0, bias=True)
+        self.fc4 = nn.Conv2d(self.x_channels[3], embed_dim, kernel_size=1, stride=1, padding=0, bias=True)
+        # FIXME: self.cls_token need to be added, also in forawrd func
+        # self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.up.apply(self._init_weights)
         self.x_modality_encoder.init_weights()
         self.interactions.apply(self._init_weights)
         self.apply(self._init_deform_weights)
         normal_(self.level_embed)
+        trunc_normal_(self.cls_token, std=.02)
 
     def _init_weights(self, m):
         if isinstance(m, nn.Linear):
@@ -468,13 +474,21 @@ class BEiTAdapter(BEiT):
         c2 = self.fc2(c2)
         c3 = self.fc3(c3)
         c4 = self.fc4(c4)
-
+        # fetch bs and emb_dim
+        bs, dim, _, _ = c1.shape
+        # flatten c2,3,4 to tokens
+        c2 = c2.view(bs, dim, -1).transpose(1, 2)  # 8s
+        c3 = c3.view(bs, dim, -1).transpose(1, 2)  # 16s
+        c4 = c4.view(bs, dim, -1).transpose(1, 2)  # 32s
+        # level encoding
         c2, c3, c4 = self._add_level_embed(c2, c3, c4)
         c = torch.cat([c2, c3, c4], dim=1)
 
         # Patch Embedding forward
         x, H, W = self.patch_embed(x)
         bs, n, dim = x.shape
+        # class token for vit
+        cls = self.cls_token.expand(bs, -1, -1)
         if self.pos_embed is not None:
             pos_embed = self._get_pos_embed(self.pos_embed, H, W)
             x = x + pos_embed
@@ -484,8 +498,8 @@ class BEiTAdapter(BEiT):
         outs = list()
         for i, layer in enumerate(self.interactions):
             indexes = self.interaction_indexes[i]
-            x, c = layer(x, c, self.blocks[indexes[0]:indexes[-1] + 1],
-                         deform_inputs1, deform_inputs2, H, W)
+            x, c, cls = layer(x, c, cls, self.blocks[indexes[0]:indexes[-1] + 1],
+                              deform_inputs1, deform_inputs2, H, W)
             if self.version == 'old':
                 outs.append(x.transpose(1, 2).view(bs, dim, H, W).contiguous())
 
