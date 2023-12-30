@@ -15,13 +15,13 @@ data_preprocessor = dict(
     size=crop_size)
 num_classes = 9
 # dataset settings
-train_dataloader = dict(batch_size=5, num_workers=20)
+train_dataloader = dict(batch_size=4, num_workers=40)
 
 model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
     backbone=dict(
-        type='mmpretrain_custom.ConvNeXtAdapter',
+        type='mmpretrain_custom.ConvNeXtCatAdapter',
         arch='small',
         out_indices=[0, 1, 2, 3],
         drop_path_rate=0.3,
@@ -32,7 +32,7 @@ model = dict(
             prefix='backbone.')),
     decode_head=dict(
         type='Mask2FormerHead',
-        in_channels=[96, 192, 384, 768],  # modified here
+        in_channels=[192, 384, 768, 1536],  # modified here
         strides=[4, 8, 16, 32],
         feat_channels=256,
         out_channels=256,
@@ -103,7 +103,7 @@ model = dict(
             use_sigmoid=False,
             loss_weight=2.0,
             reduction='mean',
-            class_weight=[1.0] * num_classes + [0.1]),
+            class_weight=[1.5105, 16.6591, 29.4238, 34.6315, 40.0845, 41.4357, 47.9794, 45.3725, 44.9000] + [0.1]),
         loss_mask=dict(
             type='mmdet_custom.CrossEntropyLoss',
             use_sigmoid=True,
@@ -183,7 +183,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet", name="convnext-adapter-s_lr_00002")),
+                dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet", name="convnext-adapter-s_concat_weighted_cls_loss_lr_00002")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')

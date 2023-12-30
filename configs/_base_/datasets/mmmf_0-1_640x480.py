@@ -1,6 +1,6 @@
 # dataset settings
 dataset_type = 'MMMFDataset'
-data_root = '/remote-home/jhli/TIV/TIV/data/MF_RGBT'
+data_root = '/media/ljh/Kobe24/MF_RGBT'
 sample_scale = (640, 480)
 
 train_pipeline = [

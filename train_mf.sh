@@ -1,2 +1,2 @@
-python tools/train.py configs/roadformer_mf/0-1_convnext-b_mf-480x640_norm.py
-python tools/train.py configs/roadformer_mf/0-255_convnext-b_mf-480x640_norm.py
+python tools/train.py configs/baseline_mf/bsl_adapter_conv-s_mf-480x640.py
+python tools/train.py configs/baseline_mf/bsl_adapter_conv-s_concat_mf-480x640.py

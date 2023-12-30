@@ -4,8 +4,8 @@ from .convnext import ConvNeXt
 from .share_convnext import ShareConvNeXt
 from .sumtwin_convnext import SumTwinConvNeXt
 from .convnext_adapter import ConvNeXtAdapter
-
+from .convnext_concat_adapter import ConvNeXtCatAdapter
 __all__ = [
-    'ConvNeXt', 'ShareConvNeXt',
+    'ConvNeXt', 'ShareConvNeXt', 'ConvNeXtCatAdapter',
     'TwinConvNeXt', 'SumTwinConvNeXt', 'ConvNeXtAdapter'
 ]

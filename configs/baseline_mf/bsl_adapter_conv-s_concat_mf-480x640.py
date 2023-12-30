@@ -15,13 +15,13 @@ data_preprocessor = dict(
     size=crop_size)
 num_classes = 9
 # dataset settings
-train_dataloader = dict(batch_size=5, num_workers=20)
+train_dataloader = dict(batch_size=4, num_workers=20)
 
 model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
     backbone=dict(
-        type='mmpretrain_custom.ConvNeXtAdapter',
+        type='mmpretrain_custom.ConvNeXtCatAdapter',
         arch='small',
         out_indices=[0, 1, 2, 3],
         drop_path_rate=0.3,
@@ -32,7 +32,7 @@ model = dict(
             prefix='backbone.')),
     decode_head=dict(
         type='Mask2FormerHead',
-        in_channels=[96, 192, 384, 768],  # modified here
+        in_channels=[192, 384, 768, 1536],  # modified here
         strides=[4, 8, 16, 32],
         feat_channels=256,
         out_channels=256,
@@ -183,7 +183,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet", name="convnext-adapter-s_lr_00002")),
+                dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet", name="convnext-adapter-s_concat_lr_00002")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
