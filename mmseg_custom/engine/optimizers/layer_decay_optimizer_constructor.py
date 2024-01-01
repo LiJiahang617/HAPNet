@@ -93,7 +93,23 @@ def get_layer_id_for_vit(var_name, max_layer_id):
         return 0
     elif var_name.startswith('backbone.patch_embed'):
         return 0
-    elif var_name.startswith('backbone.layers'):
+    elif var_name.startswith('decode_head.mask_embed'):
+        return 0
+    elif var_name.startswith('decode_head.cls_embed'):
+        return 0
+    elif var_name.startswith('decode_head.level_embed'):
+        return 0
+    elif var_name.startswith('decode_head.query_embed'):
+        return 0
+    elif var_name.startswith('decode_head.query_feat'):
+        return 0
+    elif var_name.startswith('backbone.x_modality_encoder.downsample_layers'):
+        return 0
+    elif var_name.startswith('backbone.x_modality_encoder.stages'):
+        stage_id = int(var_name.split('.')[3])
+        return stage_id + 1
+    elif (var_name.startswith('backbone.blocks') or
+          var_name.startswith('backbone.layers')):
         layer_id = int(var_name.split('.')[2])
         return layer_id + 1
     else:
@@ -186,22 +202,82 @@ class LearningRateDecayOptimizerConstructor(DefaultOptimWrapperConstructor):
 
 
 @OPTIM_WRAPPER_CONSTRUCTORS.register_module()
-class LayerDecayOptimizerConstructor(LearningRateDecayOptimizerConstructor):
-    """Different learning rates are set for different layers of backbone.
+class LayerDecayOptimizerConstructor(DefaultOptimWrapperConstructor):
+    # for now, this class is just for BEiT-Adapter: ViT and ConvNeXt only.
+    def add_params(self, params, module, prefix='', is_dcn_module=None):
+        """Add all parameters of module to the params list.
 
-    Note: Currently, this optimizer constructor is built for BEiT,
-    and it will be deprecated.
-    Please use ``LearningRateDecayOptimizerConstructor`` instead.
-    """
+        The parameters of the given module will be added to the list of param
+        groups, with specific rules defined by paramwise_cfg.
+        Args:
+            params (list[dict]): A list of param groups, it will be modified
+                in place.
+            module (nn.Module): The module to be added.
+            prefix (str): The prefix of the module
+            is_dcn_module (int|float|None): If the current module is a
+                submodule of DCN, `is_dcn_module` will be passed to
+                control conv_offset layer's learning rate. Defaults to None.
+        """
+        parameter_groups = {}
+        print(self.paramwise_cfg)
+        # for ViT
+        vit_num_layers = self.paramwise_cfg.get('vit_num_layers') + 2
+        # drawbacks: ViT and x_modality encoder share the decay rate, can implement dependent weights
+        # TODO: x_encoder_num_layers now are not useful, can only use vit num in func below
+        decay_rate = self.paramwise_cfg.get('decay_rate')
+        # for x_modality_encoder
+        x_encoder_num_layers = self.paramwise_cfg.get('x_encoder_num_layers') + 2
+        print_log('Build LearningRateDecayOptimizerConstructor  '
+                  f'ViT {decay_rate} - {vit_num_layers}'
+                  f'x_modality_encoder {decay_rate} - {x_encoder_num_layers}')
+        # print('Build LayerDecayOptimizerConstructor %f - %d' %
+        #       (layer_decay_rate, num_layers))
+        weight_decay = self.base_wd
 
-    def __init__(self, optim_wrapper_cfg, paramwise_cfg):
-        warnings.warn('DeprecationWarning: Original '
-                      'LayerDecayOptimizerConstructor of BEiT '
-                      'will be deprecated. Please use '
-                      'LearningRateDecayOptimizerConstructor instead, '
-                      'and set decay_type = layer_wise_vit in paramwise_cfg.')
-        paramwise_cfg.update({'decay_type': 'layer_wise_vit'})
-        warnings.warn('DeprecationWarning: Layer_decay_rate will '
-                      'be deleted, please use decay_rate instead.')
-        paramwise_cfg['decay_rate'] = paramwise_cfg.pop('layer_decay_rate')
-        super().__init__(optim_wrapper_cfg, paramwise_cfg)
+        for name, param in module.named_parameters():
+            if not param.requires_grad:
+                continue  # frozen weights
+            if len(param.shape) == 1 or name.endswith('.bias') \
+                    or name in ('pos_embed', 'cls_token', 'visual_embed'):
+                # or "relative_position_bias_table" in name:
+                group_name = 'no_decay'
+                this_weight_decay = 0.
+            else:
+                group_name = 'decay'
+                this_weight_decay = weight_decay
+
+            layer_id = get_layer_id_for_vit(name, vit_num_layers)
+            group_name = 'layer_%d_%s' % (layer_id, group_name)
+
+            if group_name not in parameter_groups:
+                scale = decay_rate**(vit_num_layers - layer_id - 1)
+
+                parameter_groups[group_name] = {
+                    'weight_decay': this_weight_decay,
+                    'params': [],
+                    'param_names': [],
+                    'lr_scale': scale,
+                    'group_name': group_name,
+                    'lr': scale * self.base_lr,
+                }
+
+            parameter_groups[group_name]['params'].append(param)
+            parameter_groups[group_name]['param_names'].append(name)
+        rank, _ = get_dist_info()
+        if rank == 0:
+            to_display = {}
+            for key in parameter_groups:
+                to_display[key] = {
+                    'param_names': parameter_groups[key]['param_names'],
+                    'lr_scale': parameter_groups[key]['lr_scale'],
+                    'lr': parameter_groups[key]['lr'],
+                    'weight_decay': parameter_groups[key]['weight_decay'],
+                }
+            print('Param groups = %s' % json.dumps(to_display, indent=2))
+
+        # state_dict = module.state_dict()
+        # for group_name in parameter_groups:
+        #     group = parameter_groups[group_name]
+        #     for name in group["param_names"]:
+        #         group["params"].append(state_dict[name])
+        params.extend(parameter_groups.values())

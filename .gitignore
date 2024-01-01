@@ -165,3 +165,4 @@ train_nyu_mscan.sh
 .vscode/
 mmsegmentation.egg-info/
 pretrained/
+.nfs*
