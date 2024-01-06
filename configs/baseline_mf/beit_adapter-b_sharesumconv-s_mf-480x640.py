@@ -1,6 +1,6 @@
 # dataset settings
 dataset_type = 'MMMFDataset'
-data_root = '/remote-home/jhli/TIV/TIV/data/MF_RGBT'
+data_root = '/media/ljh/Kobe24/MF_RGBT'
 
 # vit-adapter needs square, so crop must has h==w
 crop_size = (480, 480) # h, w
@@ -38,7 +38,7 @@ test_pipeline = [
     dict(type='PackSegInputs')
 ]
 # tta settings: Note: val will not use this strategy
-img_ratios = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]  # 多尺度预测缩放比例
+img_ratios = [1.0, 1.25, 1.5]  # 多尺度预测缩放比例
 tta_pipeline = [  # 多尺度测试
     dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
@@ -57,8 +57,8 @@ tta_pipeline = [  # 多尺度测试
 ]
 
 train_dataloader = dict(
-    batch_size=4,
-    num_workers=40,
+    batch_size=7,
+    num_workers=16,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
@@ -109,7 +109,7 @@ val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU', 'mFscore'])
 test_evaluator = val_evaluator
 
 convnext_pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-small_3rdparty_32xb128-noema_in1k_20220301-303e75e3.pth'
-beit_pretrained = '/remote-home/jhli/TIV/TIV/pretrained/beitv2_base_patch16_224_pt1k_ft21k.pth'
+beit_pretrained = '/home/ljh/Desktop/TIV/TIV/pretrained/beitv2_base_patch16_224_pt1k_ft21k.pth'
 
 
 data_preprocessor = dict(
@@ -119,7 +119,10 @@ data_preprocessor = dict(
     bgr_to_rgb=True,
     pad_val=0,
     seg_pad_val=255,
-    size=crop_size)
+    size=crop_size,
+    # if you want to use tta, then you should give test_cfg or test data won't be padding, and cause errors!
+    # test_cfg=dict(size=crop_size)
+    )
 num_classes = 9
 
 # model setting
@@ -265,7 +268,7 @@ model = dict(
                 ]),
             sampler=dict(type='mmdet_custom.MaskPseudoSampler'))),
     train_cfg=dict(),
-    test_cfg=dict(mode='slide', crop_size=crop_size, stride=(320, 320)))
+    test_cfg=dict(mode='slide', crop_size=crop_size, stride=(320, 320))) #h,w
 
 # optimizer
 optimizer = dict(

@@ -1,6 +1,6 @@
 # dataset settings
 dataset_type = 'MMMFDataset'
-data_root = '/media/ljh/Kobe24/MF_RGBT'
+data_root = '/media/ljh/Kobe24/MF_RGBT_enhance'
 
 # vit-adapter needs square, so crop must has h==w
 crop_size = (480, 480) # h, w
@@ -38,7 +38,7 @@ test_pipeline = [
     dict(type='PackSegInputs')
 ]
 # tta settings: Note: val will not use this strategy
-img_ratios = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75]  # 多尺度预测缩放比例
+img_ratios = [1.0, 1.25, 1.5]  # 多尺度预测缩放比例
 tta_pipeline = [  # 多尺度测试
     dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
@@ -119,7 +119,10 @@ data_preprocessor = dict(
     bgr_to_rgb=True,
     pad_val=0,
     seg_pad_val=255,
-    size=crop_size)
+    size=crop_size,
+    # if you want to use tta, then you should give test_cfg or test data won't be padding, and cause errors!
+    # test_cfg=dict(size=crop_size)
+    )
 num_classes = 9
 
 # model setting
@@ -127,7 +130,7 @@ model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
     backbone=dict(
-        type='mmpretrain_custom.BEiTAdapter_rgbxcat',
+        type='mmpretrain_custom.BEiTAdapter_rgbxsum',
         pretrained=beit_pretrained,
         img_size=480,
         patch_size=16,
@@ -149,7 +152,7 @@ model = dict(
         # this param is to link with x_modality_encoder
         arch='small',
         x_modality_encoder=dict(
-            type='mmpretrain_custom.ShareCatConvNeXt',
+            type='mmpretrain_custom.ShareSumConvNeXt',
             arch='small',
             out_indices=[0, 1, 2, 3],
             drop_path_rate=0.3,
@@ -265,7 +268,7 @@ model = dict(
                 ]),
             sampler=dict(type='mmdet_custom.MaskPseudoSampler'))),
     train_cfg=dict(),
-    test_cfg=dict(mode='slide', crop_size=crop_size, stride=(320, 320)))
+    test_cfg=dict(mode='slide', crop_size=crop_size, stride=(320, 320))) #h,w
 
 # optimizer
 optimizer = dict(
@@ -313,7 +316,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet", name="beit-adapter-b_share_cat_convnext-s_layer_decay_constructor")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet", name="beit-adapter-b_share_sum_convnext-s_enhance_data_layer_decay_constructor")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
