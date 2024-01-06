@@ -6,8 +6,11 @@ from .allmlp_head import AllmlpHead
 from .ham_head import LightHamHead
 from .mask2former_head import Mask2FormerHead
 from .disc_head import PatchDiscriminator
+from .uper_head import UPerHead
+from .fcn_head import FCNHead
 
 __all__ = [
-    'BaseDecodeHead', 'MaskFormerHead', 'Mask2FormerHead',
-    'RoadFormerHead', 'AllmlpHead', 'LightHamHead', 'PatchDiscriminator'
+    'BaseDecodeHead', 'MaskFormerHead', 'Mask2FormerHead', 'UPerHead',
+    'RoadFormerHead', 'AllmlpHead', 'LightHamHead', 'PatchDiscriminator',
+    'FCNHead'
 ]
