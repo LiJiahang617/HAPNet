@@ -58,7 +58,7 @@ tta_pipeline = [  # 多尺度测试
 
 train_dataloader = dict(
     batch_size=7,
-    num_workers=16,
+    num_workers=40,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(

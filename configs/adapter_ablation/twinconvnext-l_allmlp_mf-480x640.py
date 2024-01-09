@@ -58,7 +58,7 @@ tta_pipeline = [  # 多尺度测试
 
 train_dataloader = dict(
     batch_size=3,
-    num_workers=16,
+    num_workers=40,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
@@ -151,7 +151,7 @@ model = dict(
 
 # optimizer
 optimizer = dict(
-    type='AdamW', lr=2e-5, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
+    type='AdamW', lr=0.0001, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
@@ -195,7 +195,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet-encoder-ablation", name="twinconvnext-l_allmlp_layer_decay_constructor_lr2e-5")),
+                dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet-encoder-ablation", name="twinconvnext-l_allmlp_layer_decay_constructor_lr1e-4")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
