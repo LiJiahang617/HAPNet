@@ -193,12 +193,12 @@ model = dict(
 
 # optimizer
 optimizer = dict(
-    type='AdamW', lr=2e-5, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
+    type='AdamW', lr=1e-4, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
     constructor='LayerDecayOptimizerConstructor',
-    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.95, x_encoder_num_layers=12),
+    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.9, x_encoder_num_layers=12),
     clip_grad=dict(max_norm=5.0))
 
 # learning policy
