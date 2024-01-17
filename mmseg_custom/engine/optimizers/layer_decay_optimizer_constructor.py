@@ -226,10 +226,14 @@ class LayerDecayOptimizerConstructor(DefaultOptimWrapperConstructor):
         # TODO: x_encoder_num_layers now are not useful, can only use vit num in func below
         decay_rate = self.paramwise_cfg.get('decay_rate')
         # for x_modality_encoder
-        x_encoder_num_layers = self.paramwise_cfg.get('x_encoder_num_layers') + 2
-        print_log('Build LearningRateDecayOptimizerConstructor  '
-                  f'ViT {decay_rate} - {vit_num_layers}'
-                  f'x_modality_encoder {decay_rate} - {x_encoder_num_layers}')
+        if self.paramwise_cfg.get('x_encoder_num_layers'):
+            x_encoder_num_layers = self.paramwise_cfg.get('x_encoder_num_layers') + 2
+            print_log('Build LearningRateDecayOptimizerConstructor  '
+                      f'ViT {decay_rate} - {vit_num_layers}'
+                      f'x_modality_encoder {decay_rate} - {x_encoder_num_layers}')
+        else:
+            print_log('Build LearningRateDecayOptimizerConstructor  '
+                      f'ViT {decay_rate} - {vit_num_layers}')
         # print('Build LayerDecayOptimizerConstructor %f - %d' %
         #       (layer_decay_rate, num_layers))
         weight_decay = self.base_wd
