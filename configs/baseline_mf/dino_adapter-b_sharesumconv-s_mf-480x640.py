@@ -1,6 +1,6 @@
 # dataset settings
-dataset_type = 'MMNYUDataset'
-data_root = '/media/ljh/Kobe24/NYU_oridepth'
+dataset_type = 'MMMFDataset'
+data_root = '/media/ljh/Kobe24/MF_RGBT'
 
 # vit-adapter needs square, so crop must has h==w
 crop_size = (480, 480) # h, w
@@ -8,9 +8,9 @@ img_size = (480, 640) # h, w
 
 train_pipeline = [
     # modality value must be modified
-    dict(type='LoadNYUImageFromFile', to_float32=True, modality='HHA'),
+    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
-    dict(type='LoadNYUAnnotations', reduce_zero_label=True),
+    dict(type='LoadAnnotations', reduce_zero_label=False),
     dict(type='RandomResize', scale=(640, 480),
          ratio_range=(0.5, 2.0), keep_ratio=True),  # Note: w, h instead of h, w
     dict(type='RandomCrop', crop_size=crop_size, cat_max_ratio=0.75),
@@ -19,28 +19,28 @@ train_pipeline = [
 ]
 val_pipeline = [
     # modality value must be modified
-    dict(type='LoadNYUImageFromFile', to_float32=True, modality='HHA'),
+    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(
         type='Resize',
         scale=(640, 480), keep_ratio=True),  # Note: w, h instead of h, w
     # add loading annotation after ``Resize`` because ground truth
     # does not need to do resize data transform
-    dict(type='LoadNYUAnnotations', reduce_zero_label=True),
+    dict(type='LoadAnnotations', reduce_zero_label=False),
     dict(type='PackSegInputs')
 ]
 test_pipeline = [
     # modality value must be modified
-    dict(type='LoadNYUImageFromFile', to_float32=True, modality='HHA'),
+    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(type='Resize', scale=(640, 480), keep_ratio=True),
-    dict(type='LoadNYUAnnotations', reduce_zero_label=True),
+    dict(type='LoadAnnotations', reduce_zero_label=False),
     dict(type='PackSegInputs')
 ]
 # tta settings: Note: val will not use this strategy
 img_ratios = [1.0, 1.25, 1.5]  # 多尺度预测缩放比例
 tta_pipeline = [  # 多尺度测试
-    dict(type='LoadNYUImageFromFile', to_float32=False, modality='HHA'),
+    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(
         type='TestTimeAug',
@@ -52,26 +52,24 @@ tta_pipeline = [  # 多尺度测试
             [
                 dict(type='RandomFlip', prob=0., direction='horizontal'),
                 dict(type='RandomFlip', prob=1., direction='horizontal')
-            ], [dict(type='LoadNYUAnnotations', reduce_zero_label=True)], [dict(type='PackSegInputs')]
+            ], [dict(type='LoadAnnotations')], [dict(type='PackSegInputs')]
         ])
 ]
 
 train_dataloader = dict(
     batch_size=7,
-    num_workers=40,
+    num_workers=16,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        reduce_zero_label=True,
+        reduce_zero_label=False,
         # have to modify next 2 properties at the same time
-        modality='HHA',
-        ano_suffix='.jpg',
+        modality='thermal',
         data_prefix=dict(
             img_path='images/train',
-            depth_path='depth/train',
-            hha_path='HHA/train',
+            thermal_path='thermal/train',
             seg_map_path='labels/train'),
         pipeline=train_pipeline))
 val_dataloader = dict(
@@ -82,14 +80,12 @@ val_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        reduce_zero_label=True,
+        reduce_zero_label=False,
         # have to modify next 2 properties at the same time
-        modality='HHA',
-        ano_suffix='.jpg',
+        modality='thermal',
         data_prefix=dict(
             img_path='images/test',
-            depth_path='depth/test',
-            hha_path='HHA/test',
+            thermal_path='thermal/test',
             seg_map_path='labels/test'),
         pipeline=val_pipeline))
 test_dataloader = dict(
@@ -100,24 +96,22 @@ test_dataloader = dict(
     dataset=dict(
         type=dataset_type,
         data_root=data_root,
-        reduce_zero_label=True,
+        reduce_zero_label=False,
         # have to modify next 2 properties at the same time
-        modality='HHA',
-        ano_suffix='.jpg',
+        modality='thermal',
         data_prefix=dict(
             img_path='images/test',
-            depth_path='depth/test',
-            hha_path='HHA/test',
+            thermal_path='thermal/test',
             seg_map_path='labels/test'),
         pipeline=test_pipeline))
 
 val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU', 'mFscore'])
 test_evaluator = val_evaluator
-# pretrain models
-convnext_pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-small_3rdparty_32xb128-noema_in1k_20220301-303e75e3.pth'
-beit_pretrained = '/home/ljh/Desktop/TIV/TIV/pretrained/beitv2_base_patch16_224_pt1k_ft21k.pth'
 
-num_classes = 40
+convnext_pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-small_3rdparty_32xb128-noema_in1k_20220301-303e75e3.pth'
+dino_pretrained = '/home/ljh/Desktop/TIV/TIV/pretrained/dinov2_vitb14_pretrain_14to16.pth'
+
+
 data_preprocessor = dict(
     type='SegDataPreProcessor',
     mean=[0.485, 0.456, 0.406, 0, 0, 0], # depth images in NYU has 3 channels
@@ -129,6 +123,7 @@ data_preprocessor = dict(
     # if you want to use tta, then you should give test_cfg or test data won't be padding, and cause errors!
     # test_cfg=dict(size=crop_size)
     )
+num_classes = 9
 
 # model setting
 model = dict(
@@ -136,7 +131,8 @@ model = dict(
     data_preprocessor=data_preprocessor,
     backbone=dict(
         type='mmpretrain_custom.BEiTAdapter_rgbxsum',
-        pretrained=beit_pretrained,
+        pretrain_size=480,
+        pretrained=dino_pretrained,
         img_size=480,
         patch_size=16,
         embed_dim=768,
@@ -147,7 +143,7 @@ model = dict(
         use_abs_pos_emb=False,
         use_rel_pos_bias=True,
         init_values=1e-6,
-        drop_path_rate=0.2,
+        drop_path_rate=0.3,
         n_points=4,
         deform_num_heads=12,
         cffn_ratio=0.25,
@@ -277,12 +273,12 @@ model = dict(
 
 # optimizer
 optimizer = dict(
-    type='AdamW', lr=2e-5, weight_decay=0.05, betas=(0.9, 0.999))
+    type='AdamW', lr=0.00002, weight_decay=0.05, betas=(0.9, 0.999))
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
     constructor='LayerDecayOptimizerConstructor',
-    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.9, x_encoder_num_layers=12),
+    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.85, x_encoder_num_layers=12),
     clip_grad=dict(max_norm=5.0))
 
 # learning policy
@@ -321,7 +317,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-NYUdepth", name="0-1_beit-adapter-b_share_sum_convnext-s_enhance_data_layer_decay_constructor_090_lr2e-5")),
+                dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet", name="dino-adapter-b_share_sum_convnext-s_layer_decay_constructor070_lr2e-5_decay085")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')

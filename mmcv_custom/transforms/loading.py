@@ -949,8 +949,10 @@ class LoadNYUImageFromFile(BaseTransform):
                 assert hha_normalized.shape[2] == 3, f'found hha has only {hha_normalized.shape[2]} channels, ' \
                                                      f'but it should not'
                 results['ano'] = hha_normalized
+            elif self.modality == 'RGB':
+                results['ano'] = img / 255
             else:
-                raise ValueError(f'modality only support normal and disp now, not include {self.modality}!')
+                raise ValueError(f'modality only support normal, RGB and disp now, not include {self.modality}!')
         else:
             img = img.astype(np.float32)
             ano = ano.astype(np.float32)
@@ -959,8 +961,10 @@ class LoadNYUImageFromFile(BaseTransform):
                 results['ano'] = ano
             elif self.modality == 'HHA':
                 results['ano'] = ano
+            elif self.modality == 'RGB':
+                results['ano'] = img
             else:
-                raise ValueError(f'modality of NYU dataset only support depth, normal'
+                raise ValueError(f'modality of NYU dataset only support depth, RGB'
                                  f' and hha now, not include {self.modality}!')
 
 

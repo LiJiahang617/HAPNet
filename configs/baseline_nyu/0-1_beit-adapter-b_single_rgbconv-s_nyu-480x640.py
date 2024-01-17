@@ -8,7 +8,7 @@ img_size = (480, 640) # h, w
 
 train_pipeline = [
     # modality value must be modified
-    dict(type='LoadNYUImageFromFile', to_float32=True, modality='HHA'),
+    dict(type='LoadNYUImageFromFile', to_float32=True, modality='RGB'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(type='LoadNYUAnnotations', reduce_zero_label=True),
     dict(type='RandomResize', scale=(640, 480),
@@ -19,7 +19,7 @@ train_pipeline = [
 ]
 val_pipeline = [
     # modality value must be modified
-    dict(type='LoadNYUImageFromFile', to_float32=True, modality='HHA'),
+    dict(type='LoadNYUImageFromFile', to_float32=True, modality='RGB'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(
         type='Resize',
@@ -31,7 +31,7 @@ val_pipeline = [
 ]
 test_pipeline = [
     # modality value must be modified
-    dict(type='LoadNYUImageFromFile', to_float32=True, modality='HHA'),
+    dict(type='LoadNYUImageFromFile', to_float32=True, modality='RGB'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(type='Resize', scale=(640, 480), keep_ratio=True),
     dict(type='LoadNYUAnnotations', reduce_zero_label=True),
@@ -40,7 +40,7 @@ test_pipeline = [
 # tta settings: Note: val will not use this strategy
 img_ratios = [1.0, 1.25, 1.5]  # 多尺度预测缩放比例
 tta_pipeline = [  # 多尺度测试
-    dict(type='LoadNYUImageFromFile', to_float32=False, modality='HHA'),
+    dict(type='LoadNYUImageFromFile', to_float32=False, modality='RGB'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(
         type='TestTimeAug',
@@ -58,7 +58,7 @@ tta_pipeline = [  # 多尺度测试
 
 train_dataloader = dict(
     batch_size=7,
-    num_workers=40,
+    num_workers=16,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
     dataset=dict(
@@ -66,7 +66,7 @@ train_dataloader = dict(
         data_root=data_root,
         reduce_zero_label=True,
         # have to modify next 2 properties at the same time
-        modality='HHA',
+        modality='RGB',
         ano_suffix='.jpg',
         data_prefix=dict(
             img_path='images/train',
@@ -84,7 +84,7 @@ val_dataloader = dict(
         data_root=data_root,
         reduce_zero_label=True,
         # have to modify next 2 properties at the same time
-        modality='HHA',
+        modality='RGB',
         ano_suffix='.jpg',
         data_prefix=dict(
             img_path='images/test',
@@ -102,7 +102,7 @@ test_dataloader = dict(
         data_root=data_root,
         reduce_zero_label=True,
         # have to modify next 2 properties at the same time
-        modality='HHA',
+        modality='RGB',
         ano_suffix='.jpg',
         data_prefix=dict(
             img_path='images/test',
@@ -120,8 +120,8 @@ beit_pretrained = '/home/ljh/Desktop/TIV/TIV/pretrained/beitv2_base_patch16_224_
 num_classes = 40
 data_preprocessor = dict(
     type='SegDataPreProcessor',
-    mean=[0.485, 0.456, 0.406, 0, 0, 0], # depth images in NYU has 3 channels
-    std=[0.229, 0.224, 0.225, 1, 1, 1],
+    mean=[0.485, 0.456, 0.406, 0.485, 0.456, 0.406], # depth images in NYU has 3 channels
+    std=[0.229, 0.224, 0.225, 0.485, 0.456, 0.406],
     bgr_to_rgb=True,
     pad_val=0,
     seg_pad_val=255,
@@ -282,7 +282,7 @@ optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
     constructor='LayerDecayOptimizerConstructor',
-    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.9, x_encoder_num_layers=12),
+    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.85, x_encoder_num_layers=12),
     clip_grad=dict(max_norm=5.0))
 
 # learning policy
@@ -321,7 +321,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-NYUdepth", name="0-1_beit-adapter-b_share_sum_convnext-s_enhance_data_layer_decay_constructor_090_lr2e-5")),
+                dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-NYUdepth", name="0-1_beit-adapter-b_share_rgb_convnext-s_layer_decay_constructor_085_lr2e-5")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')

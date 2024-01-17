@@ -57,7 +57,9 @@ class MMNYUDataset(BaseSegDataset):
         modality_path_map = {
             'HHA': self.data_prefix.get('hha_path', None),
             # may add tdisp data here future
-            'depth': self.data_prefix.get('depth_path', None)
+            'depth': self.data_prefix.get('depth_path', None),
+            # to test adapter effectiveness
+            'RGB': self.data_prefix.get('img_path', None)
         }
         img_dir = self.data_prefix.get('img_path', None)
         ano_dir = modality_path_map.get(self.modality)
