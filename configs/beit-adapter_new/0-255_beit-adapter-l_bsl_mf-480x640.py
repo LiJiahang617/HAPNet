@@ -1,54 +1,164 @@
-_base_ = [
-'../_base_/datasets/cityscapes_896x896.py'
+# dataset settings
+dataset_type = 'MMMFDataset'
+data_root = '/media/ljh/Kobe24/MF_RGBT'
+
+# vit-adapter needs square, so crop must has h==w
+crop_size = (480, 480) # h, w
+img_size = (480, 640) # h, w
+
+train_pipeline = [
+    # modality value must be modified
+    dict(type='LoadMFImageFromFile', to_float32=False, modality='thermal'),
+    dict(type='StackByChannel', keys=('img', 'ano')),
+    dict(type='LoadAnnotations', reduce_zero_label=False),
+    dict(type='RandomResize', scale=(640, 480),
+         ratio_range=(0.5, 2.0), keep_ratio=True),  # Note: w, h instead of h, w
+    dict(type='RandomCrop', crop_size=crop_size, cat_max_ratio=0.75),
+    dict(type='RandomFlip', prob=0.5),
+    # dict(type='PhotoMetricDistortion'), # test if this aug has bugs
+    dict(type='PackSegInputs')
+]
+val_pipeline = [
+    # modality value must be modified
+    dict(type='LoadMFImageFromFile', to_float32=False, modality='thermal'),
+    dict(type='StackByChannel', keys=('img', 'ano')),
+    dict(
+        type='Resize',
+        scale=(640, 480), keep_ratio=True),  # Note: w, h instead of h, w
+    # add loading annotation after ``Resize`` because ground truth
+    # does not need to do resize data transform
+    dict(type='LoadAnnotations', reduce_zero_label=False),
+    dict(type='PackSegInputs')
+]
+test_pipeline = [
+    # modality value must be modified
+    dict(type='LoadMFImageFromFile', to_float32=False, modality='thermal'),
+    dict(type='StackByChannel', keys=('img', 'ano')),
+    dict(type='Resize', scale=(640, 480), keep_ratio=True),
+    dict(type='LoadAnnotations', reduce_zero_label=False),
+    dict(type='PackSegInputs')
+]
+# tta settings: Note: val will not use this strategy
+img_ratios = [1.0, 1.25, 1.5, 1.75]  # 多尺度预测缩放比例
+tta_pipeline = [  # 多尺度测试
+    dict(type='LoadMFImageFromFile', to_float32=False, modality='thermal'),
+    dict(type='StackByChannel', keys=('img', 'ano')),
+    dict(
+        type='TestTimeAug',
+        transforms=[
+            [
+                dict(type='Resize', scale_factor=r, keep_ratio=True)
+                for r in img_ratios
+            ],
+            [
+                dict(type='RandomFlip', prob=0., direction='horizontal'),
+                dict(type='RandomFlip', prob=1., direction='horizontal')
+            ], [dict(type='LoadAnnotations')], [dict(type='PackSegInputs')]
+        ])
 ]
 
-# beit_pretrained = '/remote-home/jhli/TIV/mask2former_beit_adapter_large_896_80k_mapillary.pth.tar'
-beit_pretrained = '/media/ljh/Kobe24/pretrained/beitv2_large_patch16_224_pt1k_ft21k (1).pth'
-# beit_pretrained = 'https://conversationhub.blob.core.windows.net/beit-share-public/beit/beit_large_patch16_224_pt22k_ft22k.pth'
-crop_size = (896, 896)
+train_dataloader = dict(
+    batch_size=2,
+    num_workers=16,
+    persistent_workers=True,
+    sampler=dict(type='DefaultSampler', shuffle=True),
+    dataset=dict(
+        type=dataset_type,
+        data_root=data_root,
+        reduce_zero_label=False,
+        # have to modify next 2 properties at the same time
+        modality='thermal',
+        data_prefix=dict(
+            img_path='images/train',
+            thermal_path='thermal/train',
+            seg_map_path='labels/train'),
+        pipeline=train_pipeline))
+val_dataloader = dict(
+    batch_size=1,
+    num_workers=16,
+    persistent_workers=True,
+    sampler=dict(type='DefaultSampler', shuffle=False),
+    dataset=dict(
+        type=dataset_type,
+        data_root=data_root,
+        reduce_zero_label=False,
+        # have to modify next 2 properties at the same time
+        modality='thermal',
+        data_prefix=dict(
+            img_path='images/test',
+            thermal_path='thermal/test',
+            seg_map_path='labels/test'),
+        pipeline=val_pipeline))
+test_dataloader = dict(
+    batch_size=1,
+    num_workers=16,
+    persistent_workers=True,
+    sampler=dict(type='DefaultSampler', shuffle=False),
+    dataset=dict(
+        type=dataset_type,
+        data_root=data_root,
+        reduce_zero_label=False,
+        # have to modify next 2 properties at the same time
+        modality='thermal',
+        data_prefix=dict(
+            img_path='images/test',
+            thermal_path='thermal/test',
+            seg_map_path='labels/test'),
+        pipeline=test_pipeline))
+
+val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU', 'mFscore'])
+test_evaluator = val_evaluator
+
+beit_pretrained = '/remote-home/jhli/TIV/TIV/pretrained/beitv2_large_patch16_224_pt1k_ft21k (1).pth'
+
+
 data_preprocessor = dict(
     type='SegDataPreProcessor',
-    mean=[123.675, 116.28, 103.53], # because inputs has 6 channels, for two modalities are stacked by channels
-    std=[58.395, 57.12, 57.375],
+    mean=[123.675, 116.28, 103.53, 0, 0, 0], # depth images in NYU has 3 channels
+    std=[58.395, 57.12, 57.375, 1, 1, 1],
     bgr_to_rgb=True,
     pad_val=0,
     seg_pad_val=255,
-    size=crop_size
+    size=crop_size,
     # if you want to use tta, then you should give test_cfg or test data won't be padding, and cause errors!
     # test_cfg=dict(size=crop_size)
     )
-num_classes = 19
+num_classes = 9
 
 # model setting
 model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
     backbone=dict(
-        type='mmpretrain_custom.BEiTAdapter_ori',
+        type='BEiTAdapter',
         pretrained=beit_pretrained,
-        img_size=896,
+        img_size=480,
         patch_size=16,
         embed_dim=1024,
+        in_channels=6,
+        vit_in_channels=3,
         depth=24,
-        num_heads=16,
+        num_heads=12,
         mlp_ratio=4,
         qkv_bias=True,
         use_abs_pos_emb=False,
         use_rel_pos_bias=True,
         init_values=1e-6,
         drop_path_rate=0.3,
+        conv_inplane=64,
         n_points=4,
         deform_num_heads=16,
         cffn_ratio=0.25,
         deform_ratio=0.5,
         with_cp=True,  # set with_cp=True to save memory
-        interaction_indexes=[[0, 5], [6, 11], [12, 17], [18, 23]],
+        interaction_indexes=[[0, 5], [6, 11], [12, 17], [18, 23]]
     ),
     decode_head=dict(
         type='Mask2FormerHead',
         in_channels=[1024, 1024, 1024, 1024],  # modified here
-        feat_channels=1024,
-        out_channels=1024,
+        strides=[4, 8, 16, 32],
+        feat_channels=256,
+        out_channels=256,
         num_classes=num_classes,
         num_queries=100,
         num_transformer_feat_level=3,
@@ -62,8 +172,8 @@ model = dict(
                 num_layers=6,
                 layer_cfg=dict(  # DeformableDetrTransformerEncoderLayer
                     self_attn_cfg=dict(  # MultiScaleDeformableAttention
-                        embed_dims=1024,
-                        num_heads=32,
+                        embed_dims=256,
+                        num_heads=8,
                         num_levels=3,
                         num_points=4,
                         im2col_step=64,
@@ -72,39 +182,39 @@ model = dict(
                         norm_cfg=None,
                         init_cfg=None),
                     ffn_cfg=dict(
-                        embed_dims=1024,
-                        feedforward_channels=4096,
+                        embed_dims=256,
+                        feedforward_channels=2048,
                         num_fcs=2,
                         ffn_drop=0.0,
                         act_cfg=dict(type='ReLU', inplace=True))),
                 init_cfg=None),
             positional_encoding=dict(  # SinePositionalEncoding
-                num_feats=512, normalize=True),
+                num_feats=128, normalize=True),
             init_cfg=None),
         enforce_decoder_input_project=False,
         positional_encoding=dict(  # SinePositionalEncoding
-            num_feats=512, normalize=True),
+            num_feats=128, normalize=True),
         transformer_decoder=dict(  # Mask2FormerTransformerDecoder
             return_intermediate=True,
             num_layers=9,
             layer_cfg=dict(  # Mask2FormerTransformerDecoderLayer
                 self_attn_cfg=dict(  # MultiheadAttention
-                    embed_dims=1024,
+                    embed_dims=256,
                     num_heads=32,
                     attn_drop=0.0,
                     proj_drop=0.0,
                     dropout_layer=None,
                     batch_first=True),
                 cross_attn_cfg=dict(  # MultiheadAttention
-                    embed_dims=1024,
+                    embed_dims=256,
                     num_heads=32,
                     attn_drop=0.0,
                     proj_drop=0.0,
                     dropout_layer=None,
                     batch_first=True),
                 ffn_cfg=dict(
-                    embed_dims=1024,
-                    feedforward_channels=4096,
+                    embed_dims=256,
+                    feedforward_channels=2048,
                     num_fcs=2,
                     act_cfg=dict(type='ReLU', inplace=True),
                     ffn_drop=0.0,
@@ -150,16 +260,17 @@ model = dict(
                 ]),
             sampler=dict(type='mmdet_custom.MaskPseudoSampler'))),
     train_cfg=dict(),
-    test_cfg=dict(mode='slide', crop_size=crop_size, stride=(512, 512))) #h,w
+    test_cfg=dict(mode='slide', crop_size=crop_size, stride=(320, 320))) #h,w
 
 # optimizer
 optimizer = dict(
-    type='AdamW', lr=2e-5, weight_decay=0.05, betas=(0.9, 0.999))
+    type='AdamW', lr=2e-5, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
     constructor='LayerDecayOptimizerConstructor',
-    paramwise_cfg=dict(vit_num_layers=24, decay_rate=0.9))
+    paramwise_cfg=dict(vit_num_layers=24, decay_rate=0.9),
+    clip_grad=dict(max_norm=5.0))
 
 # learning policy
 param_scheduler = [
@@ -168,15 +279,15 @@ param_scheduler = [
     dict(
         type='PolyLR',
         eta_min=0,
-        power=1.0,
+        power=0.9,
         begin=0,
-        end=80000,
-        by_epoch=False)
+        end=200,
+        by_epoch=True)
 ]
 
 # training schedule for 160k
 train_cfg = dict(
-    type='IterBasedTrainLoop', max_iters=80000, val_begin=1000, val_interval=1000)
+    type='EpochBasedTrainLoop', max_epochs=200, val_begin=1, val_interval=1)
 val_cfg = dict(type='ValLoop')
 test_cfg = dict(type='TestLoop')
 default_hooks = dict(
@@ -184,10 +295,10 @@ default_hooks = dict(
     logger=dict(type='LoggerHook', interval=50, log_metric_by_epoch=True),
     param_scheduler=dict(type='ParamSchedulerHook'),
     checkpoint=dict(
-        type='CheckpointHook', by_epoch=False, interval=40000,
+        type='CheckpointHook', by_epoch=True, interval=100,
         save_best='mIoU'),
     sampler_seed=dict(type='DistSamplerSeedHook'),
-    visualization=dict(type='SegVisualizationHook', interval=10000, draw=False))
+    visualization=dict(type='SegVisualizationHook', interval=1, draw=False))
 
 # Runtime configs
 default_scope = 'mmseg_custom'
@@ -197,7 +308,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="Beit-Adapter-l_cityscapes", name="reimplement_beit-adapter-l_layer_decay_constructor_lr2e-5")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet", name="0-255_beit-adapter-l_bsl_layer_decay_constructor_lr2e-5")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')

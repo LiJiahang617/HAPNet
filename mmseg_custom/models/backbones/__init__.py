@@ -6,8 +6,10 @@ from .twin_mscan import TwinMSCAN
 from .mit import MixVisionTransformer
 from .mscan import MSCAN
 from .share_swin import ShareSwinTransformer
+from .beit_adapter import BEiTAdapter
 
 __all__ = [
     'SwinTransformer', 'TwinSwinTransformer', 'TwinMixVisionTransformer',
-    'TwinMSCAN', 'MixVisionTransformer', 'MSCAN', 'ShareSwinTransformer'
+    'TwinMSCAN', 'MixVisionTransformer', 'MSCAN', 'ShareSwinTransformer',
+    'BEiTAdapter'
 ]

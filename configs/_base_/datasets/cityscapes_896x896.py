@@ -1,6 +1,6 @@
 # dataset settings
 dataset_type = 'CityscapesDataset'
-data_root = '/remote-home/jhli/TIV/TIV/data/Cityscapes'
+data_root = '/media/ljh/Kobe24/samsung_touch7/Cityscapes'
 img_scale = (2048, 1024)
 crop_size = (896, 896)
 
