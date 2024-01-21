@@ -344,7 +344,7 @@ class RelativePositionBias(nn.Module):
 class BEiT_ori(BaseBackbone):
     """Vision Transformer with support for patch or hybrid CNN input stage."""
 
-    def __init__(self, img_size=512, patch_size=16, in_chans=3, embed_dim=768,
+    def __init__(self, img_size=512, patch_size=16, in_channels=3, vit_in_channels=3, embed_dim=768,
                  depth=12, num_heads=12, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop_rate=0.,
                  attn_drop_rate=0., drop_path_rate=0., hybrid_backbone=None, norm_layer=None,
                  init_values=None, use_checkpoint=False, use_abs_pos_emb=False, use_rel_pos_bias=True,
@@ -367,10 +367,10 @@ class BEiT_ori(BaseBackbone):
         self.drop_path_rate = drop_path_rate
         if hybrid_backbone is not None: # None
             self.patch_embed = HybridEmbed(
-                hybrid_backbone, img_size=img_size, in_chans=in_chans, embed_dim=embed_dim)
+                hybrid_backbone, img_size=img_size, in_chans=vit_in_channels, embed_dim=embed_dim)
         else:
             self.patch_embed = PatchEmbed(
-                img_size=img_size, patch_size=patch_size, in_chans=in_chans, embed_dim=embed_dim)
+                img_size=img_size, patch_size=patch_size, in_chans=vit_in_channels, embed_dim=embed_dim)
         num_patches = self.patch_embed.num_patches
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))

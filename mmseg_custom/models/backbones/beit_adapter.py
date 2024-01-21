@@ -1299,7 +1299,6 @@ class BEiTAdapter(BEiT):
 
         c2, c3, c4 = self._add_level_embed(c2, c3, c4)
         c = torch.cat([c2, c3, c4], dim=1)
-
         # Patch Embedding forward
         # [1,1024,1024] 32 32
         x, H, W = self.patch_embed(x)
