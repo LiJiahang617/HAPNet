@@ -6,11 +6,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from mmengine_custom.model import BaseModule
 
-try:
-    from mmdet_custom.models.dense_heads import \
-        RoadFormerHead as MMDET_RoadFormerHead
-except ModuleNotFoundError:
-    MMDET_RoadFormerHead = BaseModule
+from mmdet_custom.models.dense_heads import \
+    RoadFormerHead as MMDET_RoadFormerHead
 
 from mmengine_custom.structures import InstanceData
 from torch import Tensor

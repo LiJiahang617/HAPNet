@@ -543,7 +543,9 @@ class BEiT(BaseBackbone):
                 state_dict = {k[7:]: v for k, v in state_dict.items()}
 
             # load state_dict
+            print(f'Use pretrained weights for beit !')
             self.load_state_dict(state_dict, strict=False)
+            print(f'Load pretrained weights for beit done !')
 
     def fix_init_weight(self):
         def rescale(param, layer_id):
