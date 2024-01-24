@@ -105,15 +105,8 @@ class MTEncoderDecoderv2(BaseSegmentor):
                  decode_head: ConfigType,
                  neck: OptConfigType = None,
                  auxiliary_head: OptConfigType = None,
-                 generators: OptConfigType = None,
                  discriminator: OptConfigType = None,
                  gen_x_pixel_loss_weight = 1.0,
-                 gen_x_gan_loss_weight = 0.01,
-                 gen_rgb_pixel_loss_weight = 1.0,
-                 gen_rgb_gan_loss_weight=0.01,
-                 default_domain_RGB: str = 'X',
-                 default_domain_X: str = 'RGB',
-                 reachable_domains: List[str] = ['RGB', 'X'],
                  train_cfg: OptConfigType = None,
                  test_cfg: OptConfigType = None,
                  data_preprocessor: OptConfigType = None,
@@ -128,16 +121,8 @@ class MTEncoderDecoderv2(BaseSegmentor):
         self.backbone = MODELS.build(backbone)
         if neck is not None:
             self.neck = MODELS.build(neck)
-        if generators is not None:
-            self.generators = MODELS.build(generators)
-        # used by discriminators
-        self._default_domain_R = default_domain_RGB
-        self._default_domain_X = default_domain_X
-        self._reachable_domains = reachable_domains
+        # used by generator
         self.gen_x_pixel_loss_weight = gen_x_pixel_loss_weight
-        self.gen_rgb_pixel_loss_weight = gen_rgb_pixel_loss_weight
-        self.gen_x_gan_loss_weight = gen_x_gan_loss_weight
-        self.gen_rgb_gan_loss_weight = gen_rgb_gan_loss_weight
         self._init_decode_head(decode_head)
         self._init_auxiliary_head(auxiliary_head) # generator
         self._init_discriminators(discriminator) # discriminator
@@ -147,9 +132,6 @@ class MTEncoderDecoderv2(BaseSegmentor):
 
         assert self.with_decode_head
 
-        # 使用总模型的子模块构建 CustomModule 实例
-        main_head_module_dict = {'decode_head': self.decode_head, 'generators': self.generators}
-        self.main_head = CustomModule(main_head_module_dict)
 
     def _init_decode_head(self, decode_head: ConfigType) -> None:
         """Initialize ``decode_head``"""
@@ -182,27 +164,6 @@ class MTEncoderDecoderv2(BaseSegmentor):
         """Calculate losses from a batch of inputs and data samples."""
         pass
 
-    def _generator_head_forward_train(self, inputs: List[Tensor],
-                                      data_samples: SampleList):
-        """
-        Run generator forward function to produce fake images of target domains in
-        training.
-        """
-        # losses = dict()
-        gen_outputs = dict()
-        if isinstance(self.generators, nn.ModuleList):
-            for idx, generator in enumerate(self.generators):
-                # TBD: Any generator head need to re-implement the ``forward`` method
-                output_gen = generator(inputs, data_samples)
-                # losses.update(add_prefix(loss_gen, f'gen_{idx}'))
-                gen_outputs.update(add_prefix(output_gen, f'gen_out_{idx}'))
-        else:
-            output_gen = self.generators(inputs)
-            # losses.update(add_prefix(loss_gen, 'gen'))
-            gen_outputs.update(add_prefix(output_gen, f'gen_out'))
-
-        return gen_outputs
-
     def extract_feat(self, inputs: Tensor) -> List[Tensor]:
         """Extract features from images."""
         x = self.backbone(inputs)
@@ -211,27 +172,27 @@ class MTEncoderDecoderv2(BaseSegmentor):
         return x
 
     def encode_decode(self, inputs: Tensor,
-                      batch_img_metas: List[dict], data_samples) -> Tensor:
+                      batch_img_metas: List[dict]):
         """Encode images with backbone and decode into a semantic segmentation
         map of the same size as input.
         customed by Kobe Li, add GAN-generator outputs dict
         """
         x = self.extract_feat(inputs)
-        seg_logits = self.decode_head.predict(x, batch_img_metas,
+        seg_logits, pseudo_x_masks = self.decode_head.predict(x, batch_img_metas,
                                               self.test_cfg)
 
-        # 辅助解码器：generator forward TBD:不要加这块的loss计算，只前向传播
-        gen_outputs = self._generator_head_forward_train(x, data_samples)
 
-        return seg_logits, gen_outputs
+        return seg_logits, pseudo_x_masks
 
     def _decode_head_forward_train(self, inputs: List[Tensor],
-                                   data_samples: SampleList) -> dict:
+                                   data_samples: SampleList, mtl_utils=None) -> dict:
         """Run forward function and calculate loss for decode head in
-        training."""
+        training.
+        This decode head must be a mtl head,so the loss func has to be re-implement
+        """
         losses = dict()
         loss_decode = self.decode_head.loss(inputs, data_samples,
-                                            self.train_cfg)
+                                            self.train_cfg, mtl_utils=mtl_utils)
 
         losses.update(add_prefix(loss_decode, 'decode'))
         return losses
@@ -276,20 +237,14 @@ class MTEncoderDecoderv2(BaseSegmentor):
         # generator forward
         losses = dict()
         # 将两个头的loss计算进一步封装,这部分是主解码器
-        loss_decode = self._decode_head_forward_train(x, data_samples)
+        loss_decode = self._decode_head_forward_train(x, data_samples, mtl_utils=inputs)
         losses.update(loss_decode)
 
         if self.with_auxiliary_head:
             loss_aux = self._auxiliary_head_forward_train(x, data_samples)
             losses.update(loss_aux)
 
-        # if self.with_auxiliary_neck:
-
-        # 辅助解码器：generator forward TBD:不要加这块的loss计算，只前向传播
-        gen_outputs = self._generator_head_forward_train(x, data_samples)
-
-        return losses, gen_outputs
-
+        return losses
 
     def predict(self,
                 inputs: Tensor,
@@ -351,7 +306,7 @@ class MTEncoderDecoderv2(BaseSegmentor):
             return self.decode_head.forward(x)
 
     def slide_inference(self, inputs: Tensor,
-                        batch_img_metas: List[dict]) -> Tensor:
+                        batch_img_metas: List[dict]):
         """Inference by sliding-window with overlap.
 
         If h_crop > h_img or w_crop > w_img, the small patch will be used to
@@ -378,6 +333,8 @@ class MTEncoderDecoderv2(BaseSegmentor):
         h_grids = max(h_img - h_crop + h_stride - 1, 0) // h_stride + 1
         w_grids = max(w_img - w_crop + w_stride - 1, 0) // w_stride + 1
         preds = inputs.new_zeros((batch_size, out_channels, h_img, w_img))
+        # TODO: jhli remove hardcode here for task aware preds is single channel for now
+        ta_preds = inputs.new_zeros((batch_size, 1, h_img, w_img))
         count_mat = inputs.new_zeros((batch_size, 1, h_img, w_img))
         for h_idx in range(h_grids):
             for w_idx in range(w_grids):
@@ -392,19 +349,23 @@ class MTEncoderDecoderv2(BaseSegmentor):
                 batch_img_metas[0]['img_shape'] = crop_img.shape[2:]
                 # the output of encode_decode is seg logits tensor map
                 # with shape [N, C, H, W]
-                crop_seg_logit = self.encode_decode(crop_img, batch_img_metas)
+                crop_seg_logit, crop_gen_outs = self.encode_decode(crop_img, batch_img_metas)
                 preds += F.pad(crop_seg_logit,
                                (int(x1), int(preds.shape[3] - x2), int(y1),
                                 int(preds.shape[2] - y2)))
+                ta_preds += F.pad(crop_gen_outs,
+                               (int(x1), int(ta_preds.shape[3] - x2), int(y1),
+                                int(ta_preds.shape[2] - y2)))
 
                 count_mat[:, :, y1:y2, x1:x2] += 1
         assert (count_mat == 0).sum() == 0
         seg_logits = preds / count_mat
+        gen_outs = ta_preds / count_mat
 
-        return seg_logits
+        return seg_logits, gen_outs
 
     def whole_inference(self, inputs: Tensor,
-                        batch_img_metas: List[dict], data_samples) -> Tensor:
+                        batch_img_metas: List[dict], data_samples):
         """Inference with full image.
 
         Args:
@@ -421,11 +382,11 @@ class MTEncoderDecoderv2(BaseSegmentor):
                 input image.
         """
 
-        seg_logits, gen_outs = self.encode_decode(inputs, batch_img_metas, data_samples)
+        seg_logits, gen_outs = self.encode_decode(inputs, batch_img_metas)
 
         return seg_logits, gen_outs
 
-    def inference(self, inputs: Tensor, batch_img_metas: List[dict], data_samples) -> Tensor:
+    def inference(self, inputs: Tensor, batch_img_metas: List[dict], data_samples):
         """Inference with slide/whole style.
 
         Args:
@@ -445,7 +406,7 @@ class MTEncoderDecoderv2(BaseSegmentor):
         ori_shape = batch_img_metas[0]['ori_shape']
         assert all(_['ori_shape'] == ori_shape for _ in batch_img_metas)
         if self.test_cfg.mode == 'slide':
-            seg_logit = self.slide_inference(inputs, batch_img_metas)
+            seg_logit, gen_outs = self.slide_inference(inputs, batch_img_metas)
         else:
             seg_logit, gen_outs = self.whole_inference(inputs, batch_img_metas, data_samples)
 
@@ -475,42 +436,17 @@ class MTEncoderDecoderv2(BaseSegmentor):
                    optim_wrapper=None) -> Dict[str, torch.Tensor]:
 
         data = self.data_preprocessor(data, True)
-        # discriminators, no updates to generator parameters.
-        disc_optimizer_wrappers = optim_wrapper['discriminators']
-        # main encoder-decoder 此时优化器早已被构建好，这里只是调用
-        main_optimizer_wrapper = optim_wrapper['main_head']
         log_vars = dict()
-        with main_optimizer_wrapper.optim_context(self):
+        with optim_wrapper.optim_context(self):
             # forward main encoder-decoder and generators
-            # generator, no updates to discriminator parameters.
-            set_requires_grad(self.discriminators, False)
             # 这一步需要完成decode_head部分loss计算以及生成器输出计算
             results = self._main_run_forward(data, mode='loss')  # type: ignore
-            if isinstance(results, tuple) and len(results) == 2:
-                # 如果返回了两个值，那么第一个是losses_main，第二个是gen_outputs:dict
-                losses_main, generator_outputs = results
-                # forward discriminators with main net outputs for generators loss
-                losses_gen = self._get_gen_loss(generator_outputs, data)
-                losses_main.update(losses_gen)
-                parsed_losses_main, log_vars_main = self.parse_losses(losses_main)  # type: ignore
-                log_vars.update(log_vars_main)
-                main_optimizer_wrapper.update_params(parsed_losses_main)
-                # forward discriminators with main net outputs for discriminators loss
-                set_requires_grad(self.discriminators, True)
-                # optimize
-                losses_disc, log_vars_disc = self._get_disc_loss(generator_outputs, data)
-                disc_optimizer_wrappers.update_params(losses_disc)
-                if 'loss' in log_vars_disc:
-                    log_vars_disc['disc_loss'] = log_vars_disc.pop('loss')
-                log_vars.update(log_vars_disc)
-            else:
-                # 如果只返回了一个值，那么这个值就是losses_main
-                # for DEBUG
-                print(f'WARNING: self._main_run_forward() only return one output！')
-                losses_main = results
-                parsed_losses_main, log_vars_main = self.parse_losses(losses_main)  # type: ignore
-                log_vars.update(log_vars_main)
-                main_optimizer_wrapper.update_params(parsed_losses_main)
+            # 如果只返回了一个值，那么这个值就是losses_main
+            # for DEBUG
+            losses_main = results
+            parsed_losses_main, log_vars_main = self.parse_losses(losses_main)  # type: ignore
+            log_vars.update(log_vars_main)
+            optim_wrapper.update_params(parsed_losses_main)
 
         return log_vars
 
@@ -605,107 +541,6 @@ class MTEncoderDecoderv2(BaseSegmentor):
             raise RuntimeError(f'Invalid mode "{mode}". '
                                'Only supports loss, predict and tensor mode')
 
-    def get_module(self, module):
-        """Get `nn.ModuleDict` to fit the `MMDistributedDataParallel`
-        interface.
-
-        Args:
-            module (MMDistributedDataParallel | nn.ModuleDict): The input
-                module that needs processing.
-
-        Returns:
-            nn.ModuleDict: The ModuleDict of multiple networks.
-        """
-        if is_model_wrapper(module):
-            return module.module
-
-        return module
-
-    def _get_gen_loss(self, generators_outputs, image_data):
-        """Get the loss of generator.
-
-        Args:
-            outputs (dict): A dict of output.
-            image_data (dict): A dict of RGB-X images.
-
-        Returns:
-            Tuple: Loss and a dict of log of loss terms.
-        """
-        target_domain_R = self._default_domain_R # X
-        target_domain_X = self._default_domain_X # RGB
-        losses = dict()
-        # 是一个moduledict，其中包含了两个模态的判别器，存放为字典形式
-        discriminators = self.get_module(self.discriminators)
-        real_RGB, real_X = torch.split(image_data['inputs'], (3, 3), dim=1)
-        # GAN loss for the rgb branch generator D_X
-        fake_ab_X = torch.cat((real_RGB,
-                             generators_outputs[f'gen_out.fake_{target_domain_R}']), 1)
-        # discriminator_X forward
-        fake_pred_X = discriminators[target_domain_R](fake_ab_X)
-        losses['loss_gen_X'] = F.binary_cross_entropy_with_logits(
-            fake_pred_X, 1. * torch.ones_like(fake_pred_X)) * self.gen_x_gan_loss_weight
-        losses['loss_pixel_gen_X'] = F.l1_loss(
-            real_X,
-            generators_outputs[f'gen_out.fake_{target_domain_R}'],
-            reduce='mean') * self.gen_x_pixel_loss_weight
-        # GAN loss for the X branch generator D_RGB
-        fake_ab_R = torch.cat((real_X,
-                               generators_outputs[f'gen_out.fake_{target_domain_X}']), 1)
-        # discriminator_R forward
-        fake_pred_R = discriminators[target_domain_X](fake_ab_R)
-        losses['loss_gen_R'] = F.binary_cross_entropy_with_logits(
-            fake_pred_R, 1. * torch.ones_like(fake_pred_R)) * self.gen_rgb_gan_loss_weight
-        losses['loss_pixel_gen_R'] = F.l1_loss(
-            real_RGB,
-            generators_outputs[f'gen_out.fake_{target_domain_X}'],
-            reduce='mean') * self.gen_rgb_pixel_loss_weight
-        return add_prefix(losses, 'gan')
-
-    def _get_disc_loss(self, generators_outputs, image_data):
-        """Get the loss of discriminator.
-
-        Args:
-            outputs (dict): A dict of output.
-            image_data (dict): A dict of RGB-X images.
-
-        Returns:
-            Tuple: Loss and a dict of log of loss terms.
-        """
-        # GAN loss for the discriminator
-        losses = dict()
-
-        discriminators = self.get_module(self.discriminators)
-        real_RGB, real_X = torch.split(image_data['inputs'], (3, 3), dim=1)
-        target_domain_R = self._default_domain_R
-        target_domain_X = self._default_domain_X
-        # GAN loss for the disciriminator_X _R represents RGB branch
-        fake_ab_X = torch.cat((real_RGB,
-                             generators_outputs[f'gen_out.fake_{target_domain_R}']), 1)
-        fake_pred_X = discriminators[target_domain_R](fake_ab_X.detach())
-        losses['loss_disc_X_fake'] = F.binary_cross_entropy_with_logits(
-            fake_pred_X, 0. * torch.ones_like(fake_pred_X))
-        real_ab_X = torch.cat((real_RGB,
-                             real_X), 1)
-        real_pred_X = discriminators[target_domain_R](real_ab_X)
-        losses['loss_disc_X_real'] = F.binary_cross_entropy_with_logits(
-            real_pred_X, 1. * torch.ones_like(real_pred_X))
-        # GAN loss for the disciriminator_RGB
-        fake_ab_R = torch.cat((real_X,
-                               generators_outputs[f'gen_out.fake_{target_domain_X}']), 1)
-        fake_pred_R = discriminators[target_domain_X](fake_ab_R.detach())
-        losses['loss_disc_R_fake'] = F.binary_cross_entropy_with_logits(
-            fake_pred_R, 0. * torch.ones_like(fake_pred_R))
-        real_ab_R = torch.cat((real_X,
-                               real_RGB), 1)
-        real_pred_R = discriminators[target_domain_X](real_ab_R)
-        losses['loss_disc_R_real'] = F.binary_cross_entropy_with_logits(
-            real_pred_R, 1. * torch.ones_like(real_pred_R))
-
-        loss_d, log_vars_d = self.parse_losses(add_prefix(losses, 'gan'))
-        loss_d *= 0.5
-
-        return loss_d, log_vars_d
-
     def postprocess_result(self,
                            seg_logits: Tensor,
                            data_samples: OptSampleList = None,
@@ -726,8 +561,6 @@ class MTEncoderDecoderv2(BaseSegmentor):
                 segmentation before normalization.
         """
         batch_size, C, H, W = seg_logits.shape
-        target_domain_R = self._default_domain_R
-        target_domain_X = self._default_domain_X
 
         if data_samples is None:
             data_samples = [SegDataSample() for _ in range(batch_size)]
@@ -775,18 +608,15 @@ class MTEncoderDecoderv2(BaseSegmentor):
                 i_seg_logits = i_seg_logits.sigmoid()
                 i_seg_pred = (i_seg_logits >
                               self.decode_head.threshold).to(i_seg_logits)
-
-            fake_X = gen_outs[f'gen_out.fake_{target_domain_R}'].squeeze(0)
-            fake_RGB = gen_outs[f'gen_out.fake_{target_domain_X}'].squeeze(0)
+            # because infer only support bs=1 now,so it can be implemented like below(no cut pieces)
+            ta_mask_X = gen_outs.squeeze(0)
             data_samples[i].set_data({
                 'seg_logits':
                 PixelData(**{'data': i_seg_logits}),
                 'pred_sem_seg':
                 PixelData(**{'data': i_seg_pred}),
-                'gen_fake_X':
-                PixelData(**{'data': fake_X}),
-                'gen_fake_RGB':
-                    PixelData(**{'data': fake_RGB})
+                'ta_mask_X':
+                PixelData(**{'data': ta_mask_X}),
             })
 
         return data_samples

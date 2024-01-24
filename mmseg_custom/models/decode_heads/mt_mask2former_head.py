@@ -100,36 +100,7 @@ class MTMask2FormerHead(MMDET_MTMask2FormerHead):
         return batch_gt_instances, batch_img_metas
 
     def loss(self, x: Tuple[Tensor], batch_data_samples: SampleList,
-             train_cfg: ConfigType) -> dict:
-        """Perform forward propagation and loss calculation of the decoder head
-        on the features of the upstream network.
-
-        Args:
-            x (tuple[Tensor]): Multi-level features from the upstream
-                network, each is a 4D-tensor.
-            batch_data_samples (List[:obj:`SegDataSample`]): The Data
-                Samples. It usually includes information such as
-                `gt_sem_seg`.
-            train_cfg (ConfigType): Training config.
-
-        Returns:
-            dict[str, Tensor]: a dictionary of loss components.
-        """
-        # batch SegDataSample to InstanceDataSample
-        batch_gt_instances, batch_img_metas = self._seg_data_to_instance_data(
-            batch_data_samples)
-
-        # forward
-        all_cls_scores, all_mask_preds = self(x, batch_data_samples)
-
-        # loss
-        losses = self.loss_by_feat(all_cls_scores, all_mask_preds,
-                                   batch_gt_instances, batch_img_metas)
-
-        return losses
-
-    def mt_loss(self, x: Tuple[Tensor], batch_data_samples: SampleList,
-             train_cfg: ConfigType) -> dict:
+             train_cfg: ConfigType, mtl_utils=None) -> dict:
         """Perform forward propagation and loss calculation of the decoder head
         on the features of the upstream network for multi-task network.
 
@@ -149,16 +120,16 @@ class MTMask2FormerHead(MMDET_MTMask2FormerHead):
             batch_data_samples)
 
         # forward
-        all_cls_scores, all_mask_preds = self(x, batch_data_samples)
+        all_cls_scores, all_mask_preds, all_pseudo_x_preds, all_pseudo_x_bins = self(x, batch_data_samples)
 
         # loss
-        losses = self.loss_by_feat(all_cls_scores, all_mask_preds,
-                                   batch_gt_instances, batch_img_metas)
+        losses = self.loss_by_feat(all_cls_scores, all_mask_preds, all_pseudo_x_preds, all_pseudo_x_bins,
+                                   batch_gt_instances, batch_img_metas, mtl_utils)
 
         return losses
 
     def predict(self, x: Tuple[Tensor], batch_img_metas: List[dict],
-                test_cfg: ConfigType) -> Tuple[Tensor]:
+                test_cfg: ConfigType):
         """Test without augmentaton.
 
         Args:
@@ -176,9 +147,11 @@ class MTMask2FormerHead(MMDET_MTMask2FormerHead):
             SegDataSample(metainfo=metainfo) for metainfo in batch_img_metas
         ]
 
-        all_cls_scores, all_mask_preds = self(x, batch_data_samples)
+        all_cls_scores, all_mask_preds, all_pseudo_x_preds, all_pseudo_x_bins = self(x, batch_data_samples)
         mask_cls_results = all_cls_scores[-1] # Nx(k+1)
-        mask_pred_results = all_mask_preds[-1] # NxHxW
+        mask_pred_results = all_mask_preds[-1] # NxH//4xW//4
+        pseudo_x_masks = all_pseudo_x_preds[-1]  # Nx1xH//4xW//4
+        pseudo_x_bins = all_pseudo_x_bins[-1]
         if 'pad_shape' in batch_img_metas[0]:
             size = batch_img_metas[0]['pad_shape']
         else:
@@ -186,7 +159,11 @@ class MTMask2FormerHead(MMDET_MTMask2FormerHead):
         # upsample mask
         mask_pred_results = F.interpolate(
             mask_pred_results, size=size, mode='bilinear', align_corners=False)
+        # upsample task-aware mask
+        pseudo_x_masks = F.interpolate(
+            pseudo_x_masks, size=size, mode='bilinear', align_corners=False)
         cls_score = F.softmax(mask_cls_results, dim=-1)[..., :-1]
         mask_pred = mask_pred_results.sigmoid()
         seg_logits = torch.einsum('bqc, bqhw->bchw', cls_score, mask_pred)
-        return seg_logits
+        pseudo_x_masks = torch.clamp(pseudo_x_masks, self.task_min_val, self.task_max_val)
+        return seg_logits, pseudo_x_masks

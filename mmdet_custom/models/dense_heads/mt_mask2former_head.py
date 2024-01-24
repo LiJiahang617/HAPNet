@@ -1,12 +1,13 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import copy
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from mmcv_custom.cnn import Conv2d
 from mmcv_custom.ops import point_sample
+from mmcv_custom.cnn import build_conv_layer, build_norm_layer
 from mmengine_custom.model import ModuleList, caffe2_xavier_init
 from mmengine_custom.structures import InstanceData
 from torch import Tensor
@@ -16,6 +17,7 @@ from mmdet_custom.structures import SampleList
 from mmdet_custom.utils import ConfigType, OptConfigType, OptMultiConfig, reduce_mean
 from ..layers import Mask2FormerTransformerDecoder, SinePositionalEncoding
 from ..utils import get_uncertain_point_coords_with_randomness
+from ..utils import multi_apply
 from .anchor_free_head import AnchorFreeHead
 from .maskformer_head import MaskFormerHead
 
@@ -66,6 +68,10 @@ class MTMask2FormerHead(MaskFormerHead):
                  num_things_classes: int = 80,
                  num_stuff_classes: int = 53,
                  num_queries: int = 100,
+                 num_bins:int = 256,
+                 task_max_val:int = 1,
+                 task_min_val:int = 0,
+                 task_conv_cfg = dict(type='Conv2d'),
                  num_transformer_feat_level: int = 3,
                  pixel_decoder: ConfigType = ...,
                  enforce_decoder_input_project: bool = False,
@@ -91,6 +97,12 @@ class MTMask2FormerHead(MaskFormerHead):
                      naive_dice=True,
                      eps=1.0,
                      loss_weight=5.0),
+                 loss_silog: ConfigType = dict(
+                     type='SILogLoss',
+                     loss_weight=1.0),
+                 loss_bins: ConfigType = dict(
+                     type='BinsChamferLoss',
+                     loss_weight=0.1),
                  train_cfg: OptConfigType = None,
                  test_cfg: OptConfigType = None,
                  init_cfg: OptMultiConfig = None,
@@ -138,6 +150,20 @@ class MTMask2FormerHead(MaskFormerHead):
             nn.Linear(feat_channels, feat_channels), nn.ReLU(inplace=True),
             nn.Linear(feat_channels, feat_channels), nn.ReLU(inplace=True),
             nn.Linear(feat_channels, out_channels))
+        # for the gen_x head: task aware embedding
+        self.ta_glb_reduction = nn.Sequential(nn.Linear(feat_channels, feat_channels//2), nn.ReLU(inplace=True))
+        self.ta_glb_embed = nn.Sequential(
+            nn.Linear(feat_channels//2 * num_queries, 256), nn.LeakyReLU(), nn.Linear(256, 256),
+            nn.LeakyReLU(), nn.Linear(256, num_bins))
+        self.ta_mask_embed = nn.Sequential(
+            nn.Linear(feat_channels, feat_channels), nn.LeakyReLU(inplace=True),
+            nn.Linear(feat_channels, feat_channels), nn.LeakyReLU(inplace=True),
+            nn.Linear(feat_channels, out_channels))
+        self.task_max_val = task_max_val
+        self.task_min_val = task_min_val
+        self.task_conv_out = nn.Sequential(
+            build_conv_layer(task_conv_cfg, num_queries, num_bins, kernel_size=1),
+            nn.Softmax(dim=1))
 
         self.test_cfg = test_cfg
         self.train_cfg = train_cfg
@@ -154,6 +180,9 @@ class MTMask2FormerHead(MaskFormerHead):
         self.loss_cls = MODELS.build(loss_cls)
         self.loss_mask = MODELS.build(loss_mask)
         self.loss_dice = MODELS.build(loss_dice)
+        # for the gen_x head
+        self.loss_silog = MODELS.build(loss_silog)
+        self.loss_bins = MODELS.build(loss_bins)
 
     def init_weights(self) -> None:
         for m in self.decoder_input_projs:
@@ -165,6 +194,52 @@ class MTMask2FormerHead(MaskFormerHead):
         for p in self.transformer_decoder.parameters():
             if p.dim() > 1:
                 nn.init.xavier_normal_(p)
+
+    def loss(
+        self,
+        x: Tuple[Tensor],
+        batch_data_samples: SampleList,
+        mtl_utils=None
+    ) -> Dict[str, Tensor]:
+        """Perform forward propagation and loss calculation of the
+        multi-task head on the features of the upstream network.
+
+        Args:
+            x (tuple[Tensor]): Multi-level features from the upstream
+                network, each is a 4D-tensor.
+            batch_data_samples (List[:obj:`DetDataSample`]): The Data
+                Samples. It usually includes information such as
+                `gt_instance`, `gt_panoptic_seg` and `gt_sem_seg`.
+            mtl_utils (Tensor): Including input multimodal images
+                that may be used by this multi-task learning framework.
+                Could be modified by users.
+
+        Returns:
+            dict[str, Tensor]: a dictionary of loss components
+        """
+        batch_img_metas = []
+        batch_gt_instances = []
+        batch_gt_semantic_segs = []
+        for data_sample in batch_data_samples:
+            batch_img_metas.append(data_sample.metainfo)
+            batch_gt_instances.append(data_sample.gt_instances)
+            if 'gt_sem_seg' in data_sample:
+                batch_gt_semantic_segs.append(data_sample.gt_sem_seg)
+            else:
+                batch_gt_semantic_segs.append(None)
+
+        # forward multi-task heads. Note: all_pseudo_x_preds is single-channel at that moment
+        all_cls_scores, all_mask_preds, all_pseudo_x_preds, all_pseudo_x_bins = self(x, batch_data_samples)
+
+        # preprocess ground truth
+        batch_gt_instances = self.preprocess_gt(batch_gt_instances,
+                                                batch_gt_semantic_segs)
+
+        # loss
+        losses = self.loss_by_feat(all_cls_scores, all_mask_preds, all_pseudo_x_preds, all_pseudo_x_bins,
+                                   batch_gt_instances, batch_img_metas, mtl_utils)
+
+        return losses
 
     def _get_targets_single(self, cls_score: Tensor, mask_pred: Tensor,
                             gt_instances: InstanceData,
@@ -246,7 +321,105 @@ class MTMask2FormerHead(MaskFormerHead):
         return (labels, label_weights, mask_targets, mask_weights, pos_inds,
                 neg_inds, sampling_result)
 
-    def _loss_by_feat_single(self, cls_scores: Tensor, mask_preds: Tensor,
+    def loss_by_feat(self, all_cls_scores: Tensor, all_mask_preds: Tensor,
+                     all_pseudo_x_preds: Tensor, all_pseudo_x_bins: Tensor,
+                     batch_gt_instances: List[InstanceData],
+                     batch_img_metas: List[dict],
+                     mtl_utils=None) -> Dict[str, Tensor]:
+        """Loss function. Including segmentation head and gen head
+
+        Args:
+            all_cls_scores (Tensor): Classification scores for all decoder
+                layers with shape (num_decoder, batch_size, num_queries,
+                cls_out_channels). Note `cls_out_channels` should includes
+                background.
+            all_mask_preds (Tensor): Mask scores for all decoder layers with
+                shape (num_decoder, batch_size, num_queries, h, w).
+            batch_gt_instances (list[obj:`InstanceData`]): each contains
+                ``labels`` and ``masks``.
+            batch_img_metas (list[dict]): List of image meta information.
+
+        Returns:
+            dict[str, Tensor]: A dictionary of loss components.
+        """
+        num_dec_layers = len(all_cls_scores)
+        batch_gt_instances_list = [
+            batch_gt_instances for _ in range(num_dec_layers)
+        ]
+        img_metas_list = [batch_img_metas for _ in range(num_dec_layers)]
+        # seg_head loss
+        losses_cls, losses_mask, losses_dice = multi_apply( # 将第一个位置的loss计算方法应用到所有后续位置的超参数中
+            self._loss_by_feat_single_seg, all_cls_scores, all_mask_preds,
+            batch_gt_instances_list, img_metas_list)
+        # gen head loss
+        num_items = len(all_pseudo_x_preds)
+        mtl_utils_list = [mtl_utils for _ in range(num_items)]
+        losses_silog, losses_bins = multi_apply(  # 将第一个位置的loss计算方法应用到所有后续位置的超参数中
+            self._loss_by_feat_single_gen, all_pseudo_x_preds, all_pseudo_x_bins, img_metas_list, mtl_utils_list)
+
+        loss_dict = dict()
+        # loss from the last decoder layer
+        loss_dict['loss_cls'] = losses_cls[-1]
+        loss_dict['loss_mask'] = losses_mask[-1]
+        loss_dict['loss_dice'] = losses_dice[-1]
+        # gen head
+        loss_dict['loss_gen_silog'] = losses_silog[-1]
+        loss_dict['loss_gen_bins'] = losses_bins[-1]
+
+        # loss from other decoder layers
+        num_dec_layer = 0
+        for loss_cls_i, loss_mask_i, loss_dice_i, loss_silog_i, loss_bins_i in zip(
+                losses_cls[:-1], losses_mask[:-1], losses_dice[:-1], losses_silog[:-1], losses_bins[:-1]):
+            loss_dict[f'd{num_dec_layer}.loss_cls'] = loss_cls_i
+            loss_dict[f'd{num_dec_layer}.loss_mask'] = loss_mask_i
+            loss_dict[f'd{num_dec_layer}.loss_dice'] = loss_dice_i
+            # gen head
+            loss_dict[f'd{num_dec_layer}.loss_gen_silog'] = loss_silog_i
+            loss_dict[f'd{num_dec_layer}.loss_gen_bins'] = loss_bins_i
+            num_dec_layer += 1
+        return loss_dict
+
+    def _loss_by_feat_single_gen(self, pseudo_x_preds: Tensor, pseudo_x_bins: Tensor,
+                             batch_img_metas: List[dict],
+                             mtl_utils=None):
+        """Loss function for outputs from a single decoder layer.
+
+        Args:
+            cls_scores (Tensor): Mask score logits from a single decoder layer
+                for all images. Shape (batch_size, num_queries,
+                cls_out_channels). Note `cls_out_channels` should includes
+                background.
+            pseudo_x_preds (Tensor): pseudo_x Mask logits for a pixel decoder
+                for all images. Shape (batch_size, 1, h//4, w//4) for mask2former
+                framework.
+            batch_img_metas (list[dict]): List of image meta information.
+            mtl_utils (Tensor): Including input multimodal images
+                that may be used by this multi-task learning framework.
+                Could be modified by users. Shape (batch_size, 4/6, h, w).
+            h, w are original image size.
+        Returns:
+            tuple[Tensor]: Loss components for outputs from a single \
+                decoder layer.
+        """
+        # real_RGB/real_X shape: b,3,h,w
+        real_RGB, real_X = torch.split(mtl_utils, (3, 3), dim=1)
+        target_shape = pseudo_x_preds.shape[-2:]
+        # gt_masks_downsampled shape: b,h//4,w//4
+        gt_x_downsampled = F.interpolate(
+            real_X[:, 0:1, :, :].float(), target_shape,
+            mode='nearest')
+        loss_silog = self.loss_silog(
+            pseudo_x_preds,
+            gt_x_downsampled
+            )
+        loss_bins = self.loss_bins(
+            pseudo_x_bins,
+            gt_x_downsampled
+        )
+
+        return loss_silog, loss_bins
+
+    def _loss_by_feat_single_seg(self, cls_scores: Tensor, mask_preds: Tensor,
                              batch_gt_instances: List[InstanceData],
                              batch_img_metas: List[dict]) -> Tuple[Tensor]:
         """Loss function for outputs from a single decoder layer.
@@ -377,6 +550,58 @@ class MTMask2FormerHead(MaskFormerHead):
 
         return cls_pred, mask_pred, attn_mask
 
+    def _forward_gen_head(self, decoder_out: Tensor, mask_feature: Tensor):
+        """Forward for head part which is called after every decoder layer.
+
+        Args:
+            decoder_out (Tensor): in shape (batch_size, num_queries, c).
+            mask_feature (Tensor): in shape (batch_size, c, h//4, w//4).
+            attn_mask_target_size (tuple[int, int]): target attention
+                mask size.
+            Note: h, w are original image size.
+        Returns:
+            tuple: A tuple contain three elements.
+
+                - cls_pred (Tensor): Classification scores in shape \
+                    (batch_size, num_queries, cls_out_channels). \
+                    Note `cls_out_channels` should includes background.
+                - mask_pred (Tensor): Mask scores in shape \
+                    (batch_size, num_queries,h//4, w//4).
+                - attn_mask (Tensor): Attention mask in shape \
+                    (batch_size * num_heads, num_queries, h//4, w//4).
+        """
+        decoder_out = self.transformer_decoder.post_norm(decoder_out)
+        # shape (batch_size, num_queries, c) -> (batch_size, num_queries, out_channels)
+        ta_mask_embed = self.ta_mask_embed(decoder_out)
+        # shape (batch_size, num_queries, h//4, w//4)
+        range_attention_maps = torch.einsum('bqc,bchw->bqhw', ta_mask_embed, mask_feature)
+        # shape (batch_size, num_queries, c) -> (batch_size, num_queries, c//2)
+        ta_glb = self.ta_glb_reduction(decoder_out)
+        # shape (batch_size, num_queries, c//2) -> (batch_size, num_queries * c//2)
+        ta_glb = ta_glb.flatten(1)
+        # shape (batch_size, num_queries * c//2) -> (batch_size, num_bins)
+        ta_glb = self.ta_glb_embed(ta_glb)
+        ta_glb = torch.relu(ta_glb)
+        eps = 0.1
+        ta_glb = ta_glb + eps
+        # shape = (batch_size, num_bins)
+        bin_widths_normed = ta_glb / ta_glb.sum(dim=1, keepdim=True)
+        # shape (batch_size, num_queries, h//4, w//4)-> (batch_size, num_bins, h//4, w//4)
+        out = self.task_conv_out(range_attention_maps)
+
+        bin_widths = (self.task_max_val - self.task_min_val) * bin_widths_normed
+        # shape N, num_bins -> N, num_bins + 1
+        bin_widths = F.pad(bin_widths, (1, 0), mode='constant', value=self.task_min_val)
+        bin_edges = torch.cumsum(bin_widths, dim=1)
+        centers = 0.5 * (bin_edges[:, :-1] + bin_edges[:, 1:])
+        n, dim_out = centers.size()
+        centers = centers.view(n, dim_out, 1, 1)
+        # shape (batch_size, num_bins, h, w)-> (batch_size, 1, h, w)
+        # TODO: try use 0-1/0-255 to test the difference
+        task_pred = torch.sum(out * centers, dim=1, keepdim=True)
+
+        return bin_edges, task_pred
+
     def forward(self, x: List[Tensor],
                 batch_data_samples: SampleList) -> Tuple[List[Tensor]]:
         """Forward function.
@@ -434,9 +659,18 @@ class MTMask2FormerHead(MaskFormerHead):
 
         cls_pred_list = []
         mask_pred_list = []
-        # TODO: change this func to fit multi-task pipeline
+        pseudo_x_predict_list = []
+        pseudo_x_bins_list = []
         cls_pred, mask_pred, attn_mask = self._forward_seg_head(
             query_feat, mask_features, multi_scale_memorys[0].shape[-2:])
+        # TODO: for now, aux head don't need to create new attn_mask
+        bin_edges, pseudo_x_pred = self._forward_gen_head(
+            query_feat, mask_features)
+        # (batch_size, 1, h, w)
+        pseudo_x_predict_list.append(pseudo_x_pred)
+        # N, num_bins + 1
+        pseudo_x_bins_list.append(bin_edges)
+
         # shape -> (batch_size, num_queries, num_classes)
         cls_pred_list.append(cls_pred) # TODO decide if the first time adding_to_list is necessary
         # shape -> (batch_size, num_queries, h_0, w_0)
@@ -460,11 +694,17 @@ class MTMask2FormerHead(MaskFormerHead):
                 query_key_padding_mask=None,
                 # here we do not apply masking on padded region
                 key_padding_mask=None)
-            cls_pred, mask_pred, attn_mask = self._forward_head(
+            cls_pred, mask_pred, attn_mask = self._forward_seg_head(
                 query_feat, mask_features, multi_scale_memorys[
                     (i + 1) % self.num_transformer_feat_level].shape[-2:])
+            # for aux head
+            bin_edges, pseudo_x_pred = self._forward_gen_head(
+                query_feat, mask_features)
+            pseudo_x_predict_list.append(pseudo_x_pred)
+            # N, num_bins + 1
+            pseudo_x_bins_list.append(bin_edges)
 
             cls_pred_list.append(cls_pred)
             mask_pred_list.append(mask_pred)
 
-        return cls_pred_list, mask_pred_list
+        return cls_pred_list, mask_pred_list, pseudo_x_predict_list, pseudo_x_bins_list

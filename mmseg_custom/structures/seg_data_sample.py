@@ -114,3 +114,15 @@ class SegDataSample(BaseDataElement):
     @gen_fake_RGB.deleter
     def gen_fake_RGB(self) -> None:
         del self._gen_fake_RGB
+
+    @property
+    def ta_mask_X(self) -> PixelData:
+        return self._ta_mask_X
+
+    @ta_mask_X.setter
+    def ta_mask_X(self, value: PixelData) -> None:
+        self.set_field(value, '_ta_mask_X', dtype=PixelData)
+
+    @ta_mask_X.deleter
+    def ta_mask_X(self) -> None:
+        del self._ta_mask_X

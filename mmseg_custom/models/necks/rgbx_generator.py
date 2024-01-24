@@ -92,6 +92,7 @@ class RGBXGenerator(BaseModule):
         self.fake_X_Transupsample4 = TransConvBnLeakyRelu2d(in_channels[-4], in_channels[-4])
         self.fake_X_conv4 = ConvBnrelu2d(in_channels[-4], in_channels[-4])
         self.fake_X_Transupsample5 = TransConvBnLeakyRelu2d(in_channels[-4], in_channels[-4])
+        # TODO: maybe bugs here, just one channel is enough
         self.fake_X_last = Conv2d(in_channels[-4], 3)
         # fake RGB generator
         self.fake_RGB_Transupsample1 = TransConvBnLeakyRelu2d(in_channels[-1], in_channels[-2])
