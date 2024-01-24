@@ -6,14 +6,22 @@ from functools import partial
 
 # =====================================================================================
 # ========================== vit-adapter MSDeformAttn.py ==========================
+from scipy import interpolate
+from functools import partial
+from collections import OrderedDict
 import MultiScaleDeformableAttention as MSDA
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as cp
+import torch.utils.checkpoint as cp
+
 from mmengine_custom.model import BaseModule
-from mmengine_custom.model.weight_init import (constant_init, kaiming_init,
+from mmengine_custom.runner import CheckpointLoader
+from mmengine_custom.logging import print_log
+from mmengine_custom.dist import get_dist_info
+from mmengine_custom.model.weight_init import (constant_init, kaiming_init,trunc_normal_init,
                                         trunc_normal_)
 from mmengine_custom.runner import Runner, load_checkpoint
 from PIL import Image
@@ -578,7 +586,7 @@ class RelativePositionBias(nn.Module):
             2, 0, 1).contiguous()  # nH, Wh*Ww, Wh*Ww
 
 
-class BEiT(nn.Module):
+class BEiT(BaseModule):
     """Vision Transformer with support for patch or hybrid CNN input stage."""
 
     def __init__(
@@ -605,13 +613,20 @@ class BEiT(nn.Module):
             use_rel_pos_bias=True,
             use_shared_rel_pos_bias=False,
             pretrained=None,  # ✔ pretrained
-            with_cp=False):
+            with_cp=False,
+            init_cfg=None):
         # init_cfg=None):
         # patch_norm=False
         # pfinal_norm=False
         # num_fcs=2,
         # norm_eval=False,
-        super().__init__()  # super().__init__(init_cfg=init_cfg)
+        if isinstance(pretrained, str):
+            init_cfg = dict(type='Pretrained', checkpoint=pretrained)
+        elif pretrained is None:
+            init_cfg = init_cfg
+        else:
+            raise TypeError('pretrained must be a str or None')
+        super().__init__(init_cfg=init_cfg)  # super().__init__(init_cfg=init_cfg)
         norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
         self.norm_layer = norm_layer
         self.num_classes = num_classes
@@ -671,19 +686,132 @@ class BEiT(nn.Module):
         #     trunc_normal_(self.pos_embed, std=.02)
         trunc_normal_(self.cls_token, std=.02)
         self.apply(self._init_weights)
-
         # self.fix_init_weight()
 
-    def init_weights(self, pretrained=None):
-        """Initialize the weights in backbone.
+    def init_weights(self):
+        # customed by Kobe Li for size mismatch bugs in 2312227 in loading pretrained
+        if self.init_cfg is None:
+            print_log(f'No pre-trained weights for '
+                      f'{self.__class__.__name__}, '
+                      f'training start from scratch')
+            for m in self.modules():
+                if isinstance(m, nn.Linear):
+                    trunc_normal_init(m, std=.02, bias=0.)
+                elif isinstance(m, nn.LayerNorm):
+                    constant_init(m, val=1.0, bias=0.)
+        else:
+            assert 'checkpoint' in self.init_cfg, f'Only support ' \
+                                                  f'specify `Pretrained` in ' \
+                                                  f'`init_cfg` in ' \
+                                                  f'{self.__class__.__name__} '
+            ckpt = CheckpointLoader.load_checkpoint(
+                self.init_cfg['checkpoint'], logger=None, map_location='cpu')
+            if 'state_dict' in ckpt:
+                _state_dict = ckpt['state_dict']
+            elif 'model' in ckpt:
+                _state_dict = ckpt['model']
+            else:
+                _state_dict = ckpt
+            # reshape relative position embedding for Beit
+            rank, _ = get_dist_info()
+            if 'rel_pos_bias.relative_position_bias_table' in _state_dict:
+                if rank == 0:
+                    print(
+                        'Expand the shared relative position embedding to each layers. '
+                    )
+                    num_layers = self.get_num_layers()
+                    rel_pos_bias = _state_dict[
+                        'rel_pos_bias.relative_position_bias_table']
+                    for i in range(num_layers):
+                        _state_dict['blocks.%d.attn.relative_position_bias_table' %
+                                    i] = rel_pos_bias.clone()
 
-        Args:
-            pretrained (str, optional): Path to pre-trained weights.
-                Defaults to None.
-        """
-        # pretrained = 'checkpoints/beitv2_large_patch16_224_pt1k_ft21k.pth'
-        if isinstance(pretrained, str):
-            load_checkpoint(self, pretrained, strict=False)
+                _state_dict.pop('rel_pos_bias.relative_position_bias_table')
+
+            all_keys = list(_state_dict.keys())
+            for key in all_keys:
+                if 'relative_position_index' in key:
+                    _state_dict.pop(key)
+
+                if 'relative_position_bias_table' in key:
+                    rel_pos_bias = _state_dict[key]
+                    src_num_pos, num_attn_heads = rel_pos_bias.size()
+                    dst_num_pos, _ = self.state_dict()[key].size()
+                    dst_patch_shape = self.patch_embed.patch_shape
+                    if dst_patch_shape[0] != dst_patch_shape[1]:
+                        raise NotImplementedError()
+                    num_extra_tokens = dst_num_pos - (dst_patch_shape[0] * 2 -
+                                                      1) * (dst_patch_shape[1] * 2 - 1)
+                    src_size = int((src_num_pos - num_extra_tokens) ** 0.5)
+                    dst_size = int((dst_num_pos - num_extra_tokens) ** 0.5)
+                    if src_size != dst_size:
+                        if rank == 0:
+                            print('Position interpolate for %s from %dx%d to %dx%d' %
+                                  (key, src_size, src_size, dst_size, dst_size))
+                        extra_tokens = rel_pos_bias[-num_extra_tokens:, :]
+                        rel_pos_bias = rel_pos_bias[:-num_extra_tokens, :]
+
+                        def geometric_progression(a, r, n):
+                            return a * (1.0 - r ** n) / (1.0 - r)
+
+                        left, right = 1.01, 1.5
+                        while right - left > 1e-6:
+                            q = (left + right) / 2.0
+                            gp = geometric_progression(1, q, src_size // 2)
+                            if gp > dst_size // 2:
+                                right = q
+                            else:
+                                left = q
+
+                        # if q > 1.13492:
+                        #     q = 1.13492
+
+                        dis = []
+                        cur = 1
+                        for i in range(src_size // 2):
+                            dis.append(cur)
+                            cur += q ** (i + 1)
+
+                        r_ids = [-_ for _ in reversed(dis)]
+
+                        x = r_ids + [0] + dis
+                        y = r_ids + [0] + dis
+
+                        t = dst_size // 2.0
+                        dx = np.arange(-t, t + 0.1, 1.0)
+                        dy = np.arange(-t, t + 0.1, 1.0)
+                        # if rank == 0:
+                        # print('x = {}'.format(x))
+                        # print('dx = {}'.format(dx))
+
+                        all_rel_pos_bias = []
+
+                        for i in range(num_attn_heads):
+                            z = rel_pos_bias[:, i].view(src_size,
+                                                        src_size).float().numpy()
+                            f = interpolate.interp2d(x, y, z, kind='cubic')
+                            all_rel_pos_bias.append(
+                                torch.Tensor(f(dx, dy)).contiguous().view(-1, 1).to(
+                                    rel_pos_bias.device))
+
+                        rel_pos_bias = torch.cat(all_rel_pos_bias, dim=-1)
+                        new_rel_pos_bias = torch.cat((rel_pos_bias, extra_tokens),
+                                                     dim=0)
+                        _state_dict[key] = new_rel_pos_bias
+
+            state_dict = OrderedDict()
+            for k, v in _state_dict.items():
+                if k.startswith('backbone.'):
+                    state_dict[k[9:]] = v
+                else:
+                    state_dict[k] = v
+
+            # strip prefix of state_dict
+            if list(state_dict.keys())[0].startswith('module.'):
+                state_dict = {k[7:]: v for k, v in state_dict.items()}
+
+            # load state_dict
+            self.load_state_dict(state_dict, strict=False)
 
     def fix_init_weight(self):
 
