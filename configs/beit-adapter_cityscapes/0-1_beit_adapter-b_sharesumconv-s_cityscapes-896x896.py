@@ -1,17 +1,15 @@
 # dataset settings
-dataset_type = 'MMMFDataset'
-data_root = '/media/ljh/Kobe24/MF_RGBT'
-
-# vit-adapter needs square, so crop must has h==w
-crop_size = (480, 480) # h, w
-img_size = (480, 640) # h, w
-
+dataset_type = 'MMCityscapesDataset'
+data_root = '/media/ljh/Kobe24/samsung_touch7/Cityscapes'
+img_scale = (2048, 1024)
+crop_size = (896, 896)
+# cost about 19000mb per sample in crop_size
 train_pipeline = [
     # modality value must be modified
-    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
+    dict(type='LoadCityscapesImageFromFile', to_float32=True, modality='normal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(type='LoadAnnotations', reduce_zero_label=False),
-    dict(type='RandomResize', scale=(640, 480),
+    dict(type='RandomResize', scale=img_scale,
          ratio_range=(0.5, 2.0), keep_ratio=True),  # Note: w, h instead of h, w
     dict(type='RandomCrop', crop_size=crop_size, cat_max_ratio=0.75),
     dict(type='RandomFlip', prob=0.5),
@@ -19,11 +17,9 @@ train_pipeline = [
 ]
 val_pipeline = [
     # modality value must be modified
-    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
+    dict(type='LoadCityscapesImageFromFile', to_float32=True, modality='normal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
-    dict(
-        type='Resize',
-        scale=(640, 480), keep_ratio=True),  # Note: w, h instead of h, w
+    dict(type='Resize', scale=img_scale, keep_ratio=True),  # Note: w, h instead of h, w
     # add loading annotation after ``Resize`` because ground truth
     # does not need to do resize data transform
     dict(type='LoadAnnotations', reduce_zero_label=False),
@@ -31,16 +27,17 @@ val_pipeline = [
 ]
 test_pipeline = [
     # modality value must be modified
-    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
+    dict(type='LoadCityscapesImageFromFile', to_float32=True, modality='normal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
-    dict(type='Resize', scale=(640, 480), keep_ratio=True),
-    dict(type='LoadAnnotations', reduce_zero_label=False),
+    dict(type='Resize', scale=img_scale, keep_ratio=True),  # Note: w, h instead of h, w
+    # add loading annotation after ``Resize`` because ground truth
+    # does not need to do resize data transform
     dict(type='PackSegInputs')
 ]
 # tta settings: Note: val will not use this strategy
 img_ratios = [1.0, 1.25, 1.5]  # 多尺度预测缩放比例
 tta_pipeline = [  # 多尺度测试
-    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
+    dict(type='LoadCityscapesImageFromFile', to_float32=True, modality='normal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(
         type='TestTimeAug',
@@ -52,12 +49,12 @@ tta_pipeline = [  # 多尺度测试
             [
                 dict(type='RandomFlip', prob=0., direction='horizontal'),
                 dict(type='RandomFlip', prob=1., direction='horizontal')
-            ], [dict(type='LoadAnnotations')], [dict(type='PackSegInputs')]
+            ], [dict(type='LoadAnnotations', reduce_zero_label=False)], [dict(type='PackSegInputs')]
         ])
 ]
 
 train_dataloader = dict(
-    batch_size=7,
+    batch_size=1,
     num_workers=16,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -66,11 +63,13 @@ train_dataloader = dict(
         data_root=data_root,
         reduce_zero_label=False,
         # have to modify next 2 properties at the same time
-        modality='thermal',
+        modality='normal',
+        ano_suffix='_normal.png',
         data_prefix=dict(
             img_path='images/train',
-            thermal_path='thermal/train',
-            seg_map_path='labels/train'),
+            disp_path='disp/train',
+            normal_path='sne/train',
+            seg_map_path='annotations/train'),
         pipeline=train_pipeline))
 val_dataloader = dict(
     batch_size=1,
@@ -82,11 +81,13 @@ val_dataloader = dict(
         data_root=data_root,
         reduce_zero_label=False,
         # have to modify next 2 properties at the same time
-        modality='thermal',
+        modality='normal',
+        ano_suffix='_normal.png',
         data_prefix=dict(
-            img_path='images/test',
-            thermal_path='thermal/test',
-            seg_map_path='labels/test'),
+            img_path='images/val',
+            disp_path='disp/val',
+            normal_path='sne/val',
+            seg_map_path='annotations/val'),
         pipeline=val_pipeline))
 test_dataloader = dict(
     batch_size=1,
@@ -98,20 +99,23 @@ test_dataloader = dict(
         data_root=data_root,
         reduce_zero_label=False,
         # have to modify next 2 properties at the same time
-        modality='thermal',
+        modality='normal',
+        ano_suffix='_normal.png',
         data_prefix=dict(
             img_path='images/test',
-            thermal_path='thermal/test',
-            seg_map_path='labels/test'),
+            disp_path='disp/test',
+            normal_path='sne/test',
+            seg_map_path='annotations/test'),
         pipeline=test_pipeline))
 
 val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU', 'mFscore'])
 test_evaluator = val_evaluator
 
+
 convnext_pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-small_3rdparty_32xb128-noema_in1k_20220301-303e75e3.pth'
 beit_pretrained = '/media/ljh/Kobe24/pretrained/beitv2_base_patch16_224_pt1k_ft21k.pth'
 
-
+crop_size = (896, 896)
 data_preprocessor = dict(
     type='SegDataPreProcessor',
     mean=[0.485, 0.456, 0.406, 0, 0, 0], # depth images in NYU has 3 channels
@@ -123,7 +127,7 @@ data_preprocessor = dict(
     # if you want to use tta, then you should give test_cfg or test data won't be padding, and cause errors!
     # test_cfg=dict(size=crop_size)
     )
-num_classes = 9
+num_classes = 19
 
 # model setting
 model = dict(
@@ -132,7 +136,7 @@ model = dict(
     backbone=dict(
         type='mmpretrain_custom.BEiTAdapter_rgbxsum',
         pretrained=beit_pretrained,
-        img_size=480,
+        img_size=896,
         patch_size=16,
         embed_dim=768,
         depth=12,
@@ -268,7 +272,7 @@ model = dict(
                 ]),
             sampler=dict(type='mmdet_custom.MaskPseudoSampler'))),
     train_cfg=dict(),
-    test_cfg=dict(mode='slide', crop_size=crop_size, stride=(320, 320))) #h,w
+    test_cfg=dict(mode='slide', crop_size=crop_size, stride=(512, 512))) #h,w
 
 # optimizer
 optimizer = dict(
@@ -277,8 +281,7 @@ optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
     constructor='LayerDecayOptimizerConstructor',
-    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.95, x_encoder_num_layers=12),
-    clip_grad=dict(max_norm=5.0))
+    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.85))
 
 # learning policy
 param_scheduler = [
@@ -286,16 +289,16 @@ param_scheduler = [
         type='LinearLR', start_factor=1e-6, by_epoch=False, begin=0, end=1500),
     dict(
         type='PolyLR',
-        eta_min=0,
-        power=0.9,
-        begin=0,
-        end=200,
-        by_epoch=True)
+        power=1.0,
+        begin=1500,
+        end=80000,
+        eta_min=0.0,
+        by_epoch=False)
 ]
 
 # training schedule for 160k
 train_cfg = dict(
-    type='EpochBasedTrainLoop', max_epochs=200, val_begin=1, val_interval=1)
+    type='IterBasedTrainLoop', max_iters=80000, val_begin=1000, val_interval=200)
 val_cfg = dict(type='ValLoop')
 test_cfg = dict(type='TestLoop')
 default_hooks = dict(
@@ -303,10 +306,10 @@ default_hooks = dict(
     logger=dict(type='LoggerHook', interval=50, log_metric_by_epoch=True),
     param_scheduler=dict(type='ParamSchedulerHook'),
     checkpoint=dict(
-        type='CheckpointHook', by_epoch=True, interval=100,
+        type='CheckpointHook', by_epoch=False, interval=40000,
         save_best='mIoU'),
     sampler_seed=dict(type='DistSamplerSeedHook'),
-    visualization=dict(type='SegVisualizationHook', interval=1, draw=False))
+    visualization=dict(type='SegVisualizationHook', interval=10000, draw=False))
 
 # Runtime configs
 default_scope = 'mmseg_custom'
@@ -316,11 +319,11 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet", name="beit-adapter-b_share_sum_convnext-s_layer_decay_constructor")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="beit-Adapter-cityscapes", name="convnext-adapter-b/s_sne_layer_decay_constructor_085_lr1e-4")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
-log_processor = dict(window_size=10, by_epoch=True, custom_cfg=None, num_digits=4)
+log_processor = dict(window_size=10, by_epoch=False, custom_cfg=None, num_digits=4)
 log_level = 'INFO'
 load_from = None
 resume = False
