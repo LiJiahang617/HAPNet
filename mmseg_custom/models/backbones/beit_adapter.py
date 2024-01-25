@@ -6,24 +6,19 @@ from functools import partial
 
 # =====================================================================================
 # ========================== vit-adapter MSDeformAttn.py ==========================
-from scipy import interpolate
-from functools import partial
-from collections import OrderedDict
 import MultiScaleDeformableAttention as MSDA
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils.checkpoint as cp
-import torch.utils.checkpoint as cp
-
-from mmengine_custom.model import BaseModule
-from mmengine_custom.runner import CheckpointLoader
-from mmengine_custom.logging import print_log
-from mmengine_custom.dist import get_dist_info
-from mmengine_custom.model.weight_init import (constant_init, kaiming_init,trunc_normal_init,
+from mmengine_custom.model import BaseModule, ModuleList
+from mmengine_custom.model.weight_init import (constant_init, kaiming_init,
                                         trunc_normal_)
+from mmengine_custom.runner.checkpoint import _load_checkpoint, _load_checkpoint_with_prefix
+from mmengine_custom.logging import print_log
 from mmengine_custom.runner import Runner, load_checkpoint
+
 from PIL import Image
 from timm.models.layers import DropPath, drop_path, to_2tuple, trunc_normal_
 from torch.autograd import Function
@@ -32,9 +27,12 @@ from torch.cuda.amp import custom_bwd, custom_fwd
 from torch.nn.init import constant_, normal_, xavier_uniform_
 
 from mmseg_custom.registry import MODELS
+from torch.nn.modules.batchnorm import _BatchNorm
+from scipy import interpolate
 
 # from mmcv.ops.multi_scale_deform_attn \
 #     import MultiScaleDeformableAttention as MSDeformAttn
+import pdb
 
 
 class MSDeformAttnFunction(Function):
@@ -59,7 +57,7 @@ class MSDeformAttnFunction(Function):
     @custom_bwd
     def backward(ctx, grad_output):
         value, value_spatial_shapes, value_level_start_index, \
-        sampling_locations, attention_weights = ctx.saved_tensors
+            sampling_locations, attention_weights = ctx.saved_tensors
         grad_value, grad_sampling_loc, grad_attn_weight = \
             MSDA.ms_deform_attn_backward(
                 value, value_spatial_shapes, value_level_start_index,
@@ -84,7 +82,7 @@ def ms_deform_attn_core_pytorch(value, value_spatial_shapes,
             N_ * M_, D_, H_, W_)
         # N_, Lq_, M_, P_, 2 -> N_, M_, Lq_, P_, 2 -> N_*M_, Lq_, P_, 2
         sampling_grid_l_ = sampling_grids[:, :, :,
-                                          lid_].transpose(1, 2).flatten(0, 1)
+                           lid_].transpose(1, 2).flatten(0, 1)
         # N_*M_, D_, Lq_, P_
         sampling_value_l_ = F.grid_sample(
             value_l_,
@@ -161,8 +159,8 @@ class MSDeformAttn(nn.Module):
         grid_init = torch.stack([thetas.cos(), thetas.sin()], -1)
         grid_init = (grid_init /
                      grid_init.abs().max(-1, keepdim=True)[0]).view(
-                         self.n_heads, 1, 1, 2).repeat(1, self.n_levels,
-                                                       self.n_points, 1)
+            self.n_heads, 1, 1, 2).repeat(1, self.n_levels,
+                                          self.n_points, 1)
         for i in range(self.n_points):
             grid_init[:, :, i, :] *= i + 1
 
@@ -196,15 +194,6 @@ class MSDeformAttn(nn.Module):
 
         N, Len_q, _ = query.shape  # (1,1024,1024),([1, 5376, 1024])
         N, Len_in, _ = input_flatten.shape  # ([1, 5376, 1024]),(1,1024,1024)交替
-        # print("\n")
-        # print(f"😭😭😭😭😭😭MSDeformAttn:input_spatial_shapes[:, 1].shape😍 {input_spatial_shapes[:, 1].shape}")
-        # print(f"😭😭😭😭😭😭MSDeformAttn:input_spatial_shapes[:, 1]😍 {input_spatial_shapes[:, 1]}")
-        # print("\n")
-
-        # torch.Size([1])
-        # tensor([32], device='cuda:0')
-        # torch.Size([3])
-        # tensor([64, 32, 16], device='cuda:0')
 
         assert (input_spatial_shapes[:, 0] *
                 input_spatial_shapes[:, 1]).sum() == Len_in
@@ -219,7 +208,7 @@ class MSDeformAttn(nn.Module):
             N, Len_q, self.n_heads, self.n_levels, self.n_points, 2)
         attention_weights = self.attention_weights(query).view(
             N, Len_q, self.n_heads, self.n_levels * self.n_points)
-        attention_weights = F.softmax(attention_weights, -1).\
+        attention_weights = F.softmax(attention_weights, -1). \
             view(N, Len_q, self.n_heads, self.n_levels, self.n_points)
 
         if reference_points.shape[-1] == 2:
@@ -307,7 +296,7 @@ class Attention(nn.Module):
             head_dim = attn_head_dim
         all_head_dim = head_dim * self.num_heads
         # NOTE scale factor was wrong in my original version, can set manually to be compat with prev weights
-        self.scale = qk_scale or head_dim**-0.5
+        self.scale = qk_scale or head_dim ** -0.5
 
         self.qkv = nn.Linear(dim, all_head_dim * 3, bias=False)
         if qkv_bias:
@@ -333,12 +322,12 @@ class Attention(nn.Module):
                                                  coords_w]))  # 2, Wh, Ww
             coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
             relative_coords = coords_flatten[:, :,
-                                             None] - coords_flatten[:,
-                                                                    None, :]  # 2, Wh*Ww, Wh*Ww
+                              None] - coords_flatten[:,
+                                      None, :]  # 2, Wh*Ww, Wh*Ww
             relative_coords = relative_coords.permute(
                 1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
             relative_coords[:, :,
-                            0] += window_size[0] - 1  # shift to start from 0
+            0] += window_size[0] - 1  # shift to start from 0
             relative_coords[:, :, 1] += window_size[1] - 1
             relative_coords[:, :, 0] *= 2 * window_size[1] - 1
             relative_position_index = \
@@ -476,7 +465,7 @@ class PatchEmbed(nn.Module):
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
         num_patches = (img_size[1] // patch_size[1]) * (
-            img_size[0] // patch_size[0])
+                img_size[0] // patch_size[0])
         self.patch_shape = (img_size[0] // patch_size[0],
                             img_size[1] // patch_size[1])
         self.img_size = img_size
@@ -557,8 +546,8 @@ class RelativePositionBias(nn.Module):
         coords = torch.stack(torch.meshgrid([coords_h, coords_w]))  # 2, Wh, Ww
         coords_flatten = torch.flatten(coords, 1)  # 2, Wh*Ww
         relative_coords = coords_flatten[:, :,
-                                         None] - coords_flatten[:,
-                                                                None, :]  # 2, Wh*Ww, Wh*Ww
+                          None] - coords_flatten[:,
+                                  None, :]  # 2, Wh*Ww, Wh*Ww
         relative_coords = relative_coords.permute(
             1, 2, 0).contiguous()  # Wh*Ww, Wh*Ww, 2
         relative_coords[:, :, 0] += window_size[0] - 1  # shift to start from 0
@@ -567,7 +556,7 @@ class RelativePositionBias(nn.Module):
         relative_position_index = \
             torch.zeros(size=(window_size[0] * window_size[1] + 1,) * 2, dtype=relative_coords.dtype)
         relative_position_index[1:,
-                                1:] = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
+        1:] = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
         relative_position_index[0, 0:] = self.num_relative_distance - 3
         relative_position_index[0:, 0] = self.num_relative_distance - 2
         relative_position_index[0, 0] = self.num_relative_distance - 1
@@ -594,7 +583,6 @@ class BEiT(BaseModule):
             img_size=512,  # ✔  img_size
             patch_size=16,  # ✔  patch_size
             in_channels=3,  # ✔ in_channels
-            vit_in_channels=3,
             num_classes=80,  # x
             embed_dim=768,  # ✔ embed_dims
             depth=12,  # ✔ num_layers
@@ -615,18 +603,18 @@ class BEiT(BaseModule):
             pretrained=None,  # ✔ pretrained
             with_cp=False,
             init_cfg=None):
-        # init_cfg=None):
-        # patch_norm=False
-        # pfinal_norm=False
-        # num_fcs=2,
-        # norm_eval=False,
+
+        assert not (init_cfg and pretrained), \
+            'init_cfg and pretrained cannot be set at the same time'
         if isinstance(pretrained, str):
-            init_cfg = dict(type='Pretrained', checkpoint=pretrained)
-        elif pretrained is None:
-            init_cfg = init_cfg
-        else:
+            warnings.warn('DeprecationWarning: pretrained is deprecated, '
+                          'please use "init_cfg" instead')
+            self.init_cfg = dict(type='Pretrained', checkpoint=pretrained)
+        elif pretrained is not None:
             raise TypeError('pretrained must be a str or None')
-        super().__init__(init_cfg=init_cfg)  # super().__init__(init_cfg=init_cfg)
+
+        super().__init__(init_cfg=self.init_cfg)
+
         norm_layer = norm_layer or partial(nn.LayerNorm, eps=1e-6)
         self.norm_layer = norm_layer
         self.num_classes = num_classes
@@ -636,13 +624,13 @@ class BEiT(BaseModule):
             self.patch_embed = HybridEmbed(
                 hybrid_backbone,
                 img_size=img_size,
-                in_chans=vit_in_channels,
+                in_chans=in_channels,
                 embed_dim=embed_dim)
         else:
             self.patch_embed = PatchEmbed(
                 img_size=img_size,
                 patch_size=patch_size,
-                in_chans=vit_in_channels,
+                in_chans=in_channels,
                 embed_dim=embed_dim)
         num_patches = self.patch_embed.num_patches
 
@@ -665,7 +653,7 @@ class BEiT(BaseModule):
                ]  # stochastic depth decay rule
         self.use_rel_pos_bias = use_rel_pos_bias
         self.use_checkpoint = use_checkpoint
-        self.blocks = nn.ModuleList([
+        self.blocks = ModuleList([
             Block(
                 dim=embed_dim,
                 num_heads=num_heads,
@@ -686,132 +674,170 @@ class BEiT(BaseModule):
         #     trunc_normal_(self.pos_embed, std=.02)
         trunc_normal_(self.cls_token, std=.02)
         self.apply(self._init_weights)
+        # self.init_weights(pretrained)
         # self.fix_init_weight()
 
-    def init_weights(self):
-        # customed by Kobe Li for size mismatch bugs in 2312227 in loading pretrained
-        if self.init_cfg is None:
-            print_log(f'No pre-trained weights for '
-                      f'{self.__class__.__name__}, '
-                      f'training start from scratch')
-            for m in self.modules():
-                if isinstance(m, nn.Linear):
-                    trunc_normal_init(m, std=.02, bias=0.)
-                elif isinstance(m, nn.LayerNorm):
-                    constant_init(m, val=1.0, bias=0.)
-        else:
-            assert 'checkpoint' in self.init_cfg, f'Only support ' \
-                                                  f'specify `Pretrained` in ' \
-                                                  f'`init_cfg` in ' \
-                                                  f'{self.__class__.__name__} '
-            ckpt = CheckpointLoader.load_checkpoint(
-                self.init_cfg['checkpoint'], logger=None, map_location='cpu')
-            if 'state_dict' in ckpt:
-                _state_dict = ckpt['state_dict']
-            elif 'model' in ckpt:
-                _state_dict = ckpt['model']
+    # 结合beit(mmseg 1.x) 和 vit-adapter mmcv_custom的代码
+    def resize_rel_pos_embed(self, checkpoint):
+        """Resize relative pos_embed weights.
+
+        This function is modified from
+        https://github.com/microsoft/unilm/blob/master/beit/semantic_segmentation/mmcv_custom/checkpoint.py.  # noqa: E501
+        Copyright (c) Microsoft Corporation
+        Licensed under the MIT License
+        Args:
+            checkpoint (dict): Key and value of the pretrain model.
+        Returns:
+            state_dict (dict): Interpolate the relative pos_embed weights
+                in the pre-train model to the current model size.
+        """
+        if 'state_dict' in checkpoint:
+            state_dict = checkpoint['state_dict']
+        elif 'module' in checkpoint:
+            state_dict = checkpoint['module']
+
+        if list(state_dict.keys())[0].startswith('module.'):
+            state_dict = {k[7:]: v for k, v in state_dict.items()}
+
+        all_keys = list(state_dict.keys())
+        for key in all_keys:
+            if 'relative_position_index' in key:
+                state_dict.pop(key)
+            # In order to keep the center of pos_bias as consistent as
+            # possible after interpolation, and vice versa in the edge
+            # area, the geometric sequence interpolation method is adopted.
+            if 'relative_position_bias_table' in key:
+                rel_pos_bias = state_dict[key]
+                src_num_pos, num_attn_heads = rel_pos_bias.size()
+                dst_num_pos, _ = self.state_dict()[key].size()
+                dst_patch_shape = self.patch_embed.patch_shape
+                if dst_patch_shape[0] != dst_patch_shape[1]:
+                    raise NotImplementedError()
+                # Count the number of extra tokens.
+                num_extra_tokens = dst_num_pos - (
+                        dst_patch_shape[0] * 2 - 1) * (
+                                           dst_patch_shape[1] * 2 - 1)
+                src_size = int((src_num_pos - num_extra_tokens) ** 0.5)
+                dst_size = int((dst_num_pos - num_extra_tokens) ** 0.5)
+                if src_size != dst_size:
+                    extra_tokens = rel_pos_bias[-num_extra_tokens:, :]
+                    rel_pos_bias = rel_pos_bias[:-num_extra_tokens, :]
+
+                    def geometric_progression(a, r, n):
+                        return a * (1.0 - r ** n) / (1.0 - r)
+
+                    left, right = 1.01, 1.5
+                    while right - left > 1e-6:
+                        q = (left + right) / 2.0
+                        gp = geometric_progression(1, q, src_size // 2)
+                        if gp > dst_size // 2:
+                            right = q
+                        else:
+                            left = q
+
+                    # if q > 1.13492:
+                    #     q = 1.13492
+
+                    dis = []
+                    cur = 1
+                    for i in range(src_size // 2):
+                        dis.append(cur)
+                        cur += q ** (i + 1)
+
+                    r_ids = [-_ for _ in reversed(dis)]
+
+                    x = r_ids + [0] + dis
+                    y = r_ids + [0] + dis
+                    t = dst_size // 2.0
+                    dx = np.arange(-t, t + 0.1, 1.0)
+                    dy = np.arange(-t, t + 0.1, 1.0)
+
+                    all_rel_pos_bias = []
+
+                    for i in range(num_attn_heads):
+                        z = rel_pos_bias[:, i].view(src_size,
+                                                    src_size).float().numpy()
+                        f = interpolate.interp2d(x, y, z, kind='cubic')
+                        all_rel_pos_bias.append(
+                            torch.Tensor(f(dx, dy)).contiguous().view(-1, 1).to(
+                                rel_pos_bias.device))
+
+                    rel_pos_bias = torch.cat(all_rel_pos_bias, dim=-1)
+                    new_rel_pos_bias = torch.cat((rel_pos_bias, extra_tokens),
+                                                 dim=0)
+                    state_dict[key] = new_rel_pos_bias
+
+        if 'pos_embed' in state_dict:
+            pos_embed_checkpoint = state_dict['pos_embed']
+            embedding_size = pos_embed_checkpoint.shape[-1]
+            num_patches = self.patch_embed.num_patches
+            num_extra_tokens = self.pos_embed.shape[-2] - num_patches
+            orig_size = int(
+                (pos_embed_checkpoint.shape[-2] - num_extra_tokens) ** 0.5)
+            # height (== width) for the new position embedding
+            new_size = int(num_patches ** 0.5)
+
+            # class_token and dist_token are kept unchanged
+            if orig_size != new_size:
+                extra_tokens = pos_embed_checkpoint[:, :num_extra_tokens]
+                # only the position tokens are interpolated
+                pos_tokens = pos_embed_checkpoint[:, num_extra_tokens:]
+                pos_tokens = pos_tokens.reshape(-1, orig_size, orig_size,
+                                                embedding_size).permute(
+                    0, 3, 1, 2)
+                pos_tokens = torch.nn.functional.interpolate(pos_tokens,
+                                                             size=(new_size,
+                                                                   new_size),
+                                                             mode='bicubic',
+                                                             align_corners=False)
+                pos_tokens = pos_tokens.permute(0, 2, 3, 1).flatten(1, 2)
+                new_pos_embed = torch.cat((extra_tokens, pos_tokens), dim=1)
+                state_dict['pos_embed'] = new_pos_embed
+
+        # interpolate position bias table if needed
+        relative_position_bias_table_keys = [
+            k for k in state_dict.keys() if 'relative_position_bias_table' in k
+        ]
+        for table_key in relative_position_bias_table_keys:
+            table_pretrained = state_dict[table_key]
+            table_current = self.state_dict()[table_key]
+            L1, nH1 = table_pretrained.size()
+            L2, nH2 = table_current.size()
+            if nH1 != nH2:
+                print_log(f'Error in loading {table_key}, pass',
+                          logger='current', level=logging.WARNING)
             else:
-                _state_dict = ckpt
-            # reshape relative position embedding for Beit
-            rank, _ = get_dist_info()
-            if 'rel_pos_bias.relative_position_bias_table' in _state_dict:
-                if rank == 0:
-                    print(
-                        'Expand the shared relative position embedding to each layers. '
-                    )
-                    num_layers = self.get_num_layers()
-                    rel_pos_bias = _state_dict[
-                        'rel_pos_bias.relative_position_bias_table']
-                    for i in range(num_layers):
-                        _state_dict['blocks.%d.attn.relative_position_bias_table' %
-                                    i] = rel_pos_bias.clone()
+                if L1 != L2:
+                    S1 = int(L1 ** 0.5)
+                    S2 = int(L2 ** 0.5)
+                    table_pretrained_resized = F.interpolate(
+                        table_pretrained.permute(1, 0).view(1, nH1, S1, S1),
+                        size=(S2, S2),
+                        mode='bicubic')
+                    state_dict[table_key] = table_pretrained_resized.view(
+                        nH2, L2).permute(1, 0)
 
-                _state_dict.pop('rel_pos_bias.relative_position_bias_table')
+        return state_dict
 
-            all_keys = list(_state_dict.keys())
-            for key in all_keys:
-                if 'relative_position_index' in key:
-                    _state_dict.pop(key)
+    def init_weights(self, pretrained=None):
+        """Initialize the weights in backbone.
 
-                if 'relative_position_bias_table' in key:
-                    rel_pos_bias = _state_dict[key]
-                    src_num_pos, num_attn_heads = rel_pos_bias.size()
-                    dst_num_pos, _ = self.state_dict()[key].size()
-                    dst_patch_shape = self.patch_embed.patch_shape
-                    if dst_patch_shape[0] != dst_patch_shape[1]:
-                        raise NotImplementedError()
-                    num_extra_tokens = dst_num_pos - (dst_patch_shape[0] * 2 -
-                                                      1) * (dst_patch_shape[1] * 2 - 1)
-                    src_size = int((src_num_pos - num_extra_tokens) ** 0.5)
-                    dst_size = int((dst_num_pos - num_extra_tokens) ** 0.5)
-                    if src_size != dst_size:
-                        if rank == 0:
-                            print('Position interpolate for %s from %dx%d to %dx%d' %
-                                  (key, src_size, src_size, dst_size, dst_size))
-                        extra_tokens = rel_pos_bias[-num_extra_tokens:, :]
-                        rel_pos_bias = rel_pos_bias[:-num_extra_tokens, :]
+        Args:
+            pretrained (str, optional): Path to pre-trained weights.
+                Defaults to None.
+        """
+        print(f"进入到BEiT_ATL的init_weights")
 
-                        def geometric_progression(a, r, n):
-                            return a * (1.0 - r ** n) / (1.0 - r)
+        #     # load_checkpoint(self, state_dict, strict=False,logger='current')
 
-                        left, right = 1.01, 1.5
-                        while right - left > 1e-6:
-                            q = (left + right) / 2.0
-                            gp = geometric_progression(1, q, src_size // 2)
-                            if gp > dst_size // 2:
-                                right = q
-                            else:
-                                left = q
-
-                        # if q > 1.13492:
-                        #     q = 1.13492
-
-                        dis = []
-                        cur = 1
-                        for i in range(src_size // 2):
-                            dis.append(cur)
-                            cur += q ** (i + 1)
-
-                        r_ids = [-_ for _ in reversed(dis)]
-
-                        x = r_ids + [0] + dis
-                        y = r_ids + [0] + dis
-
-                        t = dst_size // 2.0
-                        dx = np.arange(-t, t + 0.1, 1.0)
-                        dy = np.arange(-t, t + 0.1, 1.0)
-                        # if rank == 0:
-                        # print('x = {}'.format(x))
-                        # print('dx = {}'.format(dx))
-
-                        all_rel_pos_bias = []
-
-                        for i in range(num_attn_heads):
-                            z = rel_pos_bias[:, i].view(src_size,
-                                                        src_size).float().numpy()
-                            f = interpolate.interp2d(x, y, z, kind='cubic')
-                            all_rel_pos_bias.append(
-                                torch.Tensor(f(dx, dy)).contiguous().view(-1, 1).to(
-                                    rel_pos_bias.device))
-
-                        rel_pos_bias = torch.cat(all_rel_pos_bias, dim=-1)
-                        new_rel_pos_bias = torch.cat((rel_pos_bias, extra_tokens),
-                                                     dim=0)
-                        _state_dict[key] = new_rel_pos_bias
-
-            state_dict = OrderedDict()
-            for k, v in _state_dict.items():
-                if k.startswith('backbone.'):
-                    state_dict[k[9:]] = v
-                else:
-                    state_dict[k] = v
-
-            # strip prefix of state_dict
-            if list(state_dict.keys())[0].startswith('module.'):
-                state_dict = {k[7:]: v for k, v in state_dict.items()}
-
-            # load state_dict
-            self.load_state_dict(state_dict, strict=False)
+        if (isinstance(self.init_cfg, dict)
+                and self.init_cfg.get('type') == 'Pretrained'):
+            checkpoint = _load_checkpoint(
+                self.init_cfg['checkpoint'], logger=None, map_location='cpu')
+            state_dict = self.resize_rel_pos_embed(checkpoint)
+            self.load_state_dict(state_dict, False)
+        elif self.init_cfg is not None:
+            super().init_weights()
 
     def fix_init_weight(self):
 
@@ -823,6 +849,7 @@ class BEiT(BaseModule):
             rescale(layer.mlp.fc2.weight.data, layer_id + 1)
 
     def _init_weights(self, m):
+        print(f"=== _init_weights权重已经执行")
         if isinstance(m, nn.Linear):
             trunc_normal_(m.weight, std=.02)
             if isinstance(m, nn.Linear) and m.bias is not None:
@@ -865,7 +892,7 @@ def deform_inputs(x):
                                      dtype=torch.long,
                                      device=x.device)
     level_start_index = torch.cat((spatial_shapes.new_zeros(
-        (1, )), spatial_shapes.prod(1).cumsum(0)[:-1]))
+        (1,)), spatial_shapes.prod(1).cumsum(0)[:-1]))
     reference_points = get_reference_points([(h // 16, w // 16)], x.device)
     deform_inputs1 = [reference_points, spatial_shapes, level_start_index]
 
@@ -873,7 +900,7 @@ def deform_inputs(x):
                                      dtype=torch.long,
                                      device=x.device)
     level_start_index = torch.cat((spatial_shapes.new_zeros(
-        (1, )), spatial_shapes.prod(1).cumsum(0)[:-1]))
+        (1,)), spatial_shapes.prod(1).cumsum(0)[:-1]))
     reference_points = get_reference_points([(h // 8, w // 8),
                                              (h // 16, w // 16),
                                              (h // 32, w // 32)], x.device)
@@ -1320,7 +1347,7 @@ class SpatialPriorModule(nn.Module):
 # ===================================== vit-adapter BEiTAdapter.py =====================================
 @MODELS.register_module()
 class BEiTAdapter(BEiT):
-
+    # original single-modal beit-adapter implementation from vit-adapter
     def __init__(self,
                  pretrain_size=224,
                  conv_inplane=64,
@@ -1334,28 +1361,25 @@ class BEiTAdapter(BEiT):
                  add_vit_feature=True,
                  with_cp=False,
                  in_channels=3,
-                 vit_in_channels=3,
+                 init_cfg=None,
                  *args,
                  **kwargs):
 
         super().__init__(
-            init_values=init_values, with_cp=with_cp, in_channels=in_channels, vit_in_channels=vit_in_channels,
-            *args, **kwargs)
+            init_values=init_values, with_cp=with_cp, in_channels=in_channels, *args, **kwargs)
 
-        # self.num_classes = 80
-        # self.cls_token = None
         self.num_block = len(self.blocks)
         self.pretrain_size = (pretrain_size, pretrain_size)
         self.flags = [
-            i for i in range(-1, self.num_block, self.num_block // 4)
-        ][1:]
+                         i for i in range(-1, self.num_block, self.num_block // 4)
+                     ][1:]
         self.interaction_indexes = interaction_indexes
         self.add_vit_feature = add_vit_feature
         embed_dim = self.embed_dim
 
         self.level_embed = nn.Parameter(torch.zeros(3, embed_dim))
         self.spm = SpatialPriorModule(
-            inplanes=conv_inplane, embed_dim=embed_dim, with_cp=False,in_chans=in_channels)
+            inplanes=conv_inplane, embed_dim=embed_dim, with_cp=False, in_chans=in_channels)
         self.interactions = nn.Sequential(*[
             InteractionBlockWithCls(
                 dim=embed_dim,
@@ -1368,7 +1392,7 @@ class BEiTAdapter(BEiT):
                 cffn_ratio=cffn_ratio,
                 deform_ratio=deform_ratio,
                 extra_extractor=True if i == len(interaction_indexes) -
-                1 else False,
+                                        1 else False,
                 with_cp=with_cp) for i in range(len(interaction_indexes))
         ])
 
@@ -1403,7 +1427,7 @@ class BEiTAdapter(BEiT):
         pos_embed = pos_embed.reshape(1, self.pretrain_size[0] // 16,
                                       self.pretrain_size[1] // 16,
                                       -1).permute(0, 3, 1, 2)
-        pos_embed = F.interpolate(pos_embed, size=(H, W), mode='bicubic', align_corners=False).\
+        pos_embed = F.interpolate(pos_embed, size=(H, W), mode='bicubic', align_corners=False). \
             reshape(1, -1, H * W).permute(0, 2, 1)
         return pos_embed
 
@@ -1418,15 +1442,14 @@ class BEiTAdapter(BEiT):
         return c2, c3, c4
 
     def forward(self, x):
-        # SPM forward
-        c1, c2, c3, c4 = self.spm(x)
-        # fetch inputs and split it to 2 modalities: rgb:x
-        x, y = torch.split(x, (3, 3), dim=1)
-        # pre-process
+
         deform_inputs1, deform_inputs2 = deform_inputs(x.contiguous())
 
+        # SPM forward
+        c1, c2, c3, c4 = self.spm(x)
         c2, c3, c4 = self._add_level_embed(c2, c3, c4)
         c = torch.cat([c2, c3, c4], dim=1)
+
         # Patch Embedding forward
         # [1,1024,1024] 32 32
         x, H, W = self.patch_embed(x)
@@ -1472,15 +1495,15 @@ class BEiTAdapter(BEiT):
             c1, c2, c3, c4 = c1 + x1, c2 + x2, c3 + x3, c4 + x4
 
         # Final Norm
-
         f1 = self.norm1(c1)
         f2 = self.norm2(c2)
         f3 = self.norm3(c3)
         f4 = self.norm4(c4)
-
-        # print(f"========== f1{f1}")
-        # print(f"========== f2{f2}")
-        # print(f"========== f3{f3}")
-        # print(f"========== f4{f4}")
-
         return [f1, f2, f3, f4]
+
+    # def train(self, mode=True):
+    #     super().train(mode)
+    #     if mode and self.norm_eval:
+    #         for m in self.modules():
+    #             if isinstance(m, nn.LayerNorm):
+    #                 m.eval()
