@@ -277,7 +277,7 @@ class LayerDecayOptimizerConstructor(DefaultOptimWrapperConstructor):
                     'lr': parameter_groups[key]['lr'],
                     'weight_decay': parameter_groups[key]['weight_decay'],
                 }
-            print('Param groups = %s' % json.dumps(to_display, indent=2))
+            # print('Param groups = %s' % json.dumps(to_display, indent=2))
 
         # state_dict = module.state_dict()
         # for group_name in parameter_groups:

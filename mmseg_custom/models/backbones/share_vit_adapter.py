@@ -634,7 +634,8 @@ class BEiT(BaseModule):
                 embed_dim=embed_dim)
         num_patches = self.patch_embed.num_patches
 
-        self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.cls_token_x = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.cls_token_y = nn.Parameter(torch.zeros(1, 1, embed_dim))
         # self.mask_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         if use_abs_pos_emb:
             self.pos_embed = nn.Parameter(
@@ -672,7 +673,8 @@ class BEiT(BaseModule):
 
         # if self.pos_embed is not None:
         #     trunc_normal_(self.pos_embed, std=.02)
-        trunc_normal_(self.cls_token, std=.02)
+        trunc_normal_(self.cls_token_x, std=.02)
+        trunc_normal_(self.cls_token_y, std=.02)
         self.apply(self._init_weights)
         # self.init_weights(pretrained)
         # self.fix_init_weight()
@@ -1350,8 +1352,13 @@ class SpatialPriorModule(nn.Module):
 
 # ===================================== vit-adapter BEiTAdapter.py =====================================
 @MODELS.register_module()
-class BEiTAdapter(BEiT):
-    # original single-modal beit-adapter implementation from vit-adapter
+class ShareBEiTAdapter(BEiT):
+    """
+    Multi-modal share weights beit-adapter implementation for rgb-x segmentation
+    Share weights in ViT and modules, but separate cls_tokens, final add to construct feats
+    """
+
+
     def __init__(self,
                  pretrain_size=224,
                  conv_inplane=64,
@@ -1446,63 +1453,98 @@ class BEiTAdapter(BEiT):
         return c2, c3, c4
 
     def forward(self, x):
+        # fetch inputs and split it to 2 modalities
+        x, y = torch.split(x, (3, 3), dim=1)
 
         deform_inputs1, deform_inputs2 = deform_inputs(x.contiguous())
 
         # SPM forward
-        c1, c2, c3, c4 = self.spm(x)
-        c2, c3, c4 = self._add_level_embed(c2, c3, c4)
-        c = torch.cat([c2, c3, c4], dim=1)
+        c1_x, c2_x, c3_x, c4_x = self.spm(x)
+        c1_y, c2_y, c3_y, c4_y = self.spm(y)
+
+        c2_x, c3_x, c4_x = self._add_level_embed(c2_x, c3_x, c4_x)
+        c2_y, c3_y, c4_y = self._add_level_embed(c2_y, c3_y, c4_y)
+        c_x = torch.cat([c2_x, c3_x, c4_x], dim=1)
+        c_y = torch.cat([c2_y, c3_y, c4_y], dim=1)
 
         # Patch Embedding forward
         # [1,1024,1024] 32 32
         x, H, W = self.patch_embed(x)
+        y, H, W = self.patch_embed(y)
 
         bs, n, dim = x.shape
-        cls = self.cls_token.expand(
-            bs, -1, -1)  # stole cls_tokens impl from Phil Wang, thanks
+        cls_x = self.cls_token_x.expand(
+            bs, -1, -1)
+        cls_y = self.cls_token_y.expand(
+            bs, -1, -1)
 
         if self.pos_embed is not None:
             pos_embed = self._get_pos_embed(self.pos_embed, H, W)
             x = x + pos_embed
+            y = y + pos_embed
+
         x = self.pos_drop(x)
+        y = self.pos_drop(y)
 
         # Interaction
-        outs = list()
+        outs_x = list()
+        outs_y = list()
         for i, layer in enumerate(self.interactions):
             indexes = self.interaction_indexes[i]
 
-            x, c, cls = layer(x, c, cls,
+            x, c_x, cls = layer(x, c_x, cls_x,
                               self.blocks[indexes[0]:indexes[-1] + 1],
                               deform_inputs1, deform_inputs2, H, W)
+            y, c_y, cls = layer(y, c_y, cls_y,
+                                self.blocks[indexes[0]:indexes[-1] + 1],
+                                deform_inputs1, deform_inputs2, H, W)
 
-            outs.append(x.transpose(1, 2).view(bs, dim, H, W).contiguous())
+            outs_x.append(x.transpose(1, 2).view(bs, dim, H, W).contiguous())
+            outs_y.append(y.transpose(1, 2).view(bs, dim, H, W).contiguous())
 
         # Split & Reshape
-        c2 = c[:, 0:c2.size(1), :]
-        c3 = c[:, c2.size(1):c2.size(1) + c3.size(1), :]
-        c4 = c[:, c2.size(1) + c3.size(1):, :]
+        c2_x = c_x[:, 0:c2_x.size(1), :]
+        c3_x = c_x[:, c2_x.size(1):c2_x.size(1) + c3_x.size(1), :]
+        c4_x = c_x[:, c2_x.size(1) + c3_x.size(1):, :]
 
-        c2 = c2.transpose(1, 2).view(bs, dim, H * 2, W * 2).contiguous()
-        c3 = c3.transpose(1, 2).view(bs, dim, H, W).contiguous()
-        c4 = c4.transpose(1, 2).view(bs, dim, H // 2, W // 2).contiguous()
-        c1 = self.up(c2) + c1
+        c2_x = c2_x.transpose(1, 2).view(bs, dim, H * 2, W * 2).contiguous()
+        c3_x = c3_x.transpose(1, 2).view(bs, dim, H, W).contiguous()
+        c4_x = c4_x.transpose(1, 2).view(bs, dim, H // 2, W // 2).contiguous()
+        c1_x = self.up(c2_x) + c1_x
+
+        c2_y = c_y[:, 0:c2_y.size(1), :]
+        c3_y = c_y[:, c2_y.size(1):c2_y.size(1) + c3_y.size(1), :]
+        c4_y = c_y[:, c2_y.size(1) + c3_y.size(1):, :]
+
+        c2_y = c2_y.transpose(1, 2).view(bs, dim, H * 2, W * 2).contiguous()
+        c3_y = c3_y.transpose(1, 2).view(bs, dim, H, W).contiguous()
+        c4_y = c4_y.transpose(1, 2).view(bs, dim, H // 2, W // 2).contiguous()
+        c1_y = self.up(c2_y) + c1_y
 
         if self.add_vit_feature:
-            x1, x2, x3, x4 = outs
+            x1, x2, x3, x4 = outs_x
             x1 = F.interpolate(
                 x1, scale_factor=4, mode='bilinear', align_corners=False)
             x2 = F.interpolate(
                 x2, scale_factor=2, mode='bilinear', align_corners=False)
             x4 = F.interpolate(
                 x4, scale_factor=0.5, mode='bilinear', align_corners=False)
-            c1, c2, c3, c4 = c1 + x1, c2 + x2, c3 + x3, c4 + x4
+            c1_x, c2_x, c3_x, c4_x = c1_x + x1, c2_x + x2, c3_x + x3, c4_x + x4
+
+            y1, y2, y3, y4 = outs_y
+            y1 = F.interpolate(
+                y1, scale_factor=4, mode='bilinear', align_corners=False)
+            y2 = F.interpolate(
+                y2, scale_factor=2, mode='bilinear', align_corners=False)
+            y4 = F.interpolate(
+                y4, scale_factor=0.5, mode='bilinear', align_corners=False)
+            c1_y, c2_y, c3_y, c4_y = c1_y + y1, c2_y + y2, c3_y + y3, c4_y + y4
 
         # Final Norm
-        f1 = self.norm1(c1)
-        f2 = self.norm2(c2)
-        f3 = self.norm3(c3)
-        f4 = self.norm4(c4)
+        f1 = self.norm1(c1_x+c1_y)
+        f2 = self.norm2(c2_x+c2_y)
+        f3 = self.norm3(c3_x+c3_y)
+        f4 = self.norm4(c4_x+c4_y)
         return [f1, f2, f3, f4]
 
     # def train(self, mode=True):

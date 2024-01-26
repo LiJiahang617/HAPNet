@@ -583,6 +583,7 @@ class BEiT(BaseModule):
             img_size=512,  # ✔  img_size
             patch_size=16,  # ✔  patch_size
             in_channels=3,  # ✔ in_channels
+            vit_in_channels=3,
             num_classes=80,  # x
             embed_dim=768,  # ✔ embed_dims
             depth=12,  # ✔ num_layers
@@ -624,13 +625,13 @@ class BEiT(BaseModule):
             self.patch_embed = HybridEmbed(
                 hybrid_backbone,
                 img_size=img_size,
-                in_chans=in_channels,
+                in_chans=vit_in_channels,
                 embed_dim=embed_dim)
         else:
             self.patch_embed = PatchEmbed(
                 img_size=img_size,
                 patch_size=patch_size,
-                in_chans=in_channels,
+                in_chans=vit_in_channels,
                 embed_dim=embed_dim)
         num_patches = self.patch_embed.num_patches
 
@@ -830,7 +831,7 @@ class BEiT(BaseModule):
             pretrained (str, optional): Path to pre-trained weights.
                 Defaults to None.
         """
-        print(f"进入到BEiT_ATL的init_weights")
+        print(f"进入到BEiT的init_weights")
 
         #     # load_checkpoint(self, state_dict, strict=False,logger='current')
 
@@ -1350,9 +1351,10 @@ class SpatialPriorModule(nn.Module):
 
 # ===================================== vit-adapter BEiTAdapter.py =====================================
 @MODELS.register_module()
-class BEiTAdapter(BEiT):
-    # original single-modal beit-adapter implementation from vit-adapter
+class FusionBEiTAdapter(BEiT):
+    # multi-modality fusion beit-adapter implementation
     def __init__(self,
+                 img_size=480,
                  pretrain_size=224,
                  conv_inplane=64,
                  n_points=4,
@@ -1364,12 +1366,13 @@ class BEiTAdapter(BEiT):
                  interaction_indexes=None,
                  add_vit_feature=True,
                  with_cp=False,
-                 in_channels=3,
+                 in_channels=6,
+                 vit_in_channels=3,
                  init_cfg=None,
                  *args,
                  **kwargs):
 
-        super().__init__(
+        super().__init__(img_size=img_size,
             init_values=init_values, with_cp=with_cp, in_channels=in_channels, *args, **kwargs)
 
         self.num_block = len(self.blocks)
@@ -1384,6 +1387,8 @@ class BEiTAdapter(BEiT):
         self.level_embed = nn.Parameter(torch.zeros(3, embed_dim))
         self.spm = SpatialPriorModule(
             inplanes=conv_inplane, embed_dim=embed_dim, with_cp=False, in_chans=in_channels)
+        self.input_conv1 = nn.Conv2d(in_channels, vit_in_channels, kernel_size=1, stride=1, padding=0)
+        self.input_norm1 = nn.LayerNorm([vit_in_channels, img_size, img_size])
         self.interactions = nn.Sequential(*[
             InteractionBlockWithCls(
                 dim=embed_dim,
@@ -1445,12 +1450,16 @@ class BEiTAdapter(BEiT):
         c4 = c4 + self.level_embed[2]
         return c2, c3, c4
 
-    def forward(self, x):
-
+    def forward(self, inputs):
+        # pre-fused embedding for vit
+        x = self.input_conv1(inputs)
+        x = self.input_norm1(x)
+        # spm_input = self.input_conv2(x)
+        # spm_input = self.input_norm2(spm_input)
         deform_inputs1, deform_inputs2 = deform_inputs(x.contiguous())
 
         # SPM forward
-        c1, c2, c3, c4 = self.spm(x)
+        c1, c2, c3, c4 = self.spm(inputs)
         c2, c3, c4 = self._add_level_embed(c2, c3, c4)
         c = torch.cat([c2, c3, c4], dim=1)
 
