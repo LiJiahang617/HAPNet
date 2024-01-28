@@ -58,7 +58,7 @@ tta_pipeline = [  # 多尺度测试
 ]
 
 train_dataloader = dict(
-    batch_size=3,
+    batch_size=1,
     num_workers=16,
     persistent_workers=True,
     sampler=dict(type='InfiniteSampler', shuffle=True),
@@ -130,7 +130,7 @@ model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
     backbone=dict(
-        type='ShareBEiTAdapter',
+        type='TwinBEiTAdapter_sharespm',
         pretrained=beit_pretrained,
         img_size=480,
         patch_size=16,
@@ -263,7 +263,7 @@ model = dict(
 
 # optimizer
 optimizer = dict(
-    type='AdamW', lr=2e-5, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
+    type='AdamW', lr=0.0001, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
@@ -276,15 +276,17 @@ param_scheduler = [
         type='LinearLR', start_factor=1e-6, by_epoch=False, begin=0, end=1500),
     dict(
         type='PolyLR',
-        power=1.0,
-        begin=1500,
-        end=80000,
-        eta_min=0.0,
-        by_epoch=False)
+        eta_min=0,
+        power=0.9,
+        begin=0,
+        end=200,
+        by_epoch=True)
 ]
 
+
 # training schedule for 160k
-train_cfg = dict(type='IterBasedTrainLoop', max_iters=80000, val_interval=100)
+train_cfg = dict(
+    type='EpochBasedTrainLoop', max_epochs=200, val_begin=1, val_interval=1)
 val_cfg = dict(type='ValLoop')
 test_cfg = dict(type='TestLoop')
 default_hooks = dict(
@@ -305,12 +307,11 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet",
-                name="0-255_share-adapter-b_layer_decay_constructor_090_lr2e-5_80k_cz")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="adapter-MFNet", name="0-255_twin-beit-b_share_allvit_spm_constructor_090_lr1e-4_200epo")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
-log_processor = dict(window_size=10, by_epoch=False, custom_cfg=None, num_digits=4)
+log_processor = dict(window_size=10, by_epoch=True, custom_cfg=None, num_digits=4)
 log_level = 'INFO'
 load_from = None
 resume = False
