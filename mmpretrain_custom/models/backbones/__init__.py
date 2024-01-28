@@ -13,11 +13,12 @@ from .beit_rgbx_sum_adapter import BEiTAdapter_rgbxsum
 from .beit_adapter_ori import BEiTAdapter_ori
 from .beit_ori import BEiT_ori
 from .beit_adapter_mmlab import BEiTAdapter_mmlab
+from .spm_rgbx_sum_adapter import BEiTAdapter_spmsum
 
 __all__ = [
     'ConvNeXt', 'ShareConvNeXt', 'ConvNeXtCatAdapter',
     'BEiTAdapter', 'ShareSumConvNeXt', 'ShareCatConvNeXt',
     'TwinConvNeXt', 'SumTwinConvNeXt', 'ConvNeXtAdapter', 'BEiT_ori',
     'BEiTAdapter_rgbxcat', 'BEiTAdapter_rgbxsum', 'BEiTAdapter_ori',
-    'BEiTAdapter_mmlab'
+    'BEiTAdapter_mmlab', 'BEiTAdapter_spmsum'
 ]
