@@ -45,6 +45,8 @@ class MMMFDataset(BaseSegDataset):
         data_list = []
         modality_path_map = {
             'thermal': self.data_prefix.get('thermal_path', None),
+            # to test adapter effectiveness
+            'RGB': self.data_prefix.get('img_path', None)
         }
         img_dir = self.data_prefix.get('img_path', None)
         ano_dir = modality_path_map.get(self.modality)

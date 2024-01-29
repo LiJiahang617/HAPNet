@@ -1112,16 +1112,20 @@ class LoadMFImageFromFile(BaseTransform):
             results['img'] = img / 255
             if self.modality == 'thermal':  # in NYU-Depth v2 dataset, depth img is uint8, 0-255, so must divided
                 results['ano'] = ano / 255
+            elif self.modality == 'RGB':
+                results['ano'] = img / 255
             else:
-                raise ValueError(f'modality only support normal and disp now, not include {self.modality}!')
+                raise ValueError(f'modality only support thermal and RGB now, not include {self.modality}!')
         else:
             img = img.astype(np.float32)
             ano = ano.astype(np.float32)
             results['img'] = img
             if self.modality == 'thermal':  # TODO decide if repeat depth to 3 ch is necessary
                 results['ano'] = ano
+            elif self.modality == 'RGB':
+                results['ano'] = img
             else:
-                raise ValueError(f'modality of MFNet dataset only support thermal'
+                raise ValueError(f'modality of MFNet dataset only support thermal and RGB'
                                  f' now, not include {self.modality}!')
 
 
