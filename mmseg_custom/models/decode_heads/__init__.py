@@ -9,9 +9,10 @@ from .disc_head import PatchDiscriminator
 from .uper_head import UPerHead
 from .fcn_head import FCNHead
 from .mt_mask2former_head import MTMask2FormerHead
+from .roadformerplus_head import RoadFormerplusHead
 
 __all__ = [
     'BaseDecodeHead', 'MaskFormerHead', 'Mask2FormerHead', 'UPerHead',
     'RoadFormerHead', 'AllmlpHead', 'LightHamHead', 'PatchDiscriminator',
-    'FCNHead', 'MTMask2FormerHead'
+    'FCNHead', 'MTMask2FormerHead', 'RoadFormerplusHead'
 ]

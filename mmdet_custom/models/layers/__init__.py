@@ -16,6 +16,8 @@ from .positional_encoding import (LearnedPositionalEncoding,
                                   SinePositionalEncoding)
 from .res_layer import ResLayer, SimplifiedBasicBlock
 from .se_layer import ChannelAttention, DyReLU, SELayer
+from .roadformerplus_neck import RoadFormerplusNeck
+
 # yapf: disable
 from .transformer import (MLP, AdaptivePadding, CdnQueryGenerator,
                           ConditionalAttention,
@@ -49,9 +51,9 @@ __all__ = [
     'AdaptiveAvgPool2d', 'PatchEmbed', 'nchw_to_nlc', 'nlc_to_nchw', 'DyReLU',
     'ExpMomentumEMA', 'inverse_sigmoid', 'ChannelAttention', 'SiLU', 'MLP',
     'DetrTransformerEncoderLayer', 'DetrTransformerDecoderLayer',
-    'DetrTransformerEncoder', 'DetrTransformerDecoder',
+    'DetrTransformerEncoder', 'DetrTransformerDecoder', 'RoadFormerPixelDecoder',
     'DeformableDetrTransformerEncoder', 'DeformableDetrTransformerDecoder',
-    'DeformableDetrTransformerEncoderLayer',
+    'DeformableDetrTransformerEncoderLayer', 'RoadFormerplusNeck',
     'DeformableDetrTransformerDecoderLayer', 'AdaptivePadding',
     'coordinate_to_encoding', 'ConditionalAttention',
     'DABDetrTransformerDecoderLayer', 'DABDetrTransformerDecoder',
