@@ -11,12 +11,16 @@ from mmseg_custom.registry import MODELS
 class SILogLoss(nn.Module):  # pixel-wise loss function used in AdaBins
     def __init__(self,
                  loss_weight: float = 1.0,
+                 eps=1e-6,
                  loss_name: str = 'loss_silog'):
         super(SILogLoss, self).__init__()
         self.loss_weight = loss_weight
         self._loss_name = loss_name
+        self.eps = eps
 
     def forward(self, input, target, mask=None, interpolate=True):
+        assert input.shape == target.shape, 'the shapes of pred ' \
+                                           f'({input.shape}) and target ({target.shape}) are mismatch'
         if interpolate:
             input = nn.functional.interpolate(input, target.shape[-2:], mode='bilinear', align_corners=True)
 
