@@ -15,11 +15,14 @@ from .beit_ori import BEiT_ori
 from .beit_adapter_mmlab import BEiTAdapter_mmlab
 from .spm_rgbx_sum_adapter import BEiTAdapter_spmsum
 from .beit_sum_fapn_adapter import BEiTAdapter_rgbxsum_fapn
+from .beit_sum_fapn_c1_c2 import BEiTAdapter_rgbxsum_fapn_c1_c2_relu
+from .beit_sum_fapn_c1_c2_worelu import BEiTAdapter_rgbxsum_fapn_c1_c2_worelu
 
 __all__ = [
     'ConvNeXt', 'ShareConvNeXt', 'ConvNeXtCatAdapter',
     'BEiTAdapter', 'ShareSumConvNeXt', 'ShareCatConvNeXt',
     'TwinConvNeXt', 'SumTwinConvNeXt', 'ConvNeXtAdapter', 'BEiT_ori',
     'BEiTAdapter_rgbxcat', 'BEiTAdapter_rgbxsum', 'BEiTAdapter_ori',
-    'BEiTAdapter_mmlab', 'BEiTAdapter_spmsum', 'BEiTAdapter_rgbxsum_fapn'
+    'BEiTAdapter_mmlab', 'BEiTAdapter_spmsum', 'BEiTAdapter_rgbxsum_fapn',
+    'BEiTAdapter_rgbxsum_fapn_c1_c2_relu', 'BEiTAdapter_rgbxsum_fapn_c1_c2_worelu'
 ]
