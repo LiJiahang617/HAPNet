@@ -149,7 +149,7 @@ optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
     constructor='LearningRateDecayOptimizerConstructor',
-    paramwise_cfg=dict(num_layers=12, decay_rate=0.95, decay_type='layer_wise'))
+    paramwise_cfg=dict(num_layers=12, decay_rate=0.9, decay_type='stage_wise'))
 
 # learning policy
 param_scheduler = [
@@ -185,7 +185,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="RoadFormer_carla-352x640", name="plus_up_constructor095_lr2e-4")),
+                dict(type='WandbVisBackend', init_kwargs=dict(project="RoadFormer_carla-352x640", name="plus_up_constructor090_lr2e-4")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
