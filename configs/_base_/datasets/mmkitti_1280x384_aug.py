@@ -1,6 +1,6 @@
 # dataset settings
 dataset_type = 'MMKittiDataset'
-data_root = '/home/ljh/Desktop/Workspace/mmsegmentation/data/KITTI'
+data_root = '/home/TIV/data/KITTI'
 sample_scale = (1280, 384)
 
 train_pipeline = [

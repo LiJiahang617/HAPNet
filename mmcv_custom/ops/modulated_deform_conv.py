@@ -379,6 +379,7 @@ class ModulatedDeformConv2dMask(ModulatedDeformConv2d):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+
         self.conv_offset = nn.Conv2d(
             self.in_channels,
             self.deform_groups * 3 * self.kernel_size[0] * self.kernel_size[1],
@@ -395,7 +396,7 @@ class ModulatedDeformConv2dMask(ModulatedDeformConv2d):
             self.conv_offset.weight.data.zero_()
             self.conv_offset.bias.data.zero_()
 
-    def forward(self, x: torch.Tensor) -> torch.Tensor:  # type: ignore
+    def forward(self, x) -> torch.Tensor:  # type: ignore
         out = self.conv_offset(x[1])
         x = x[0]
         o1, o2, mask = torch.chunk(out, 3, dim=1)
