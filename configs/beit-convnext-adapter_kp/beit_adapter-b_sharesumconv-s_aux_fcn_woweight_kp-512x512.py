@@ -285,13 +285,12 @@ model = dict(
 
 # optimizer
 optimizer = dict(
-    type='AdamW', lr=0.0001, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
+    type='AdamW', lr=0.0002, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
     constructor='LayerDecayOptimizerConstructor',
-    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.9, x_encoder_num_layers=12),
-    clip_grad=dict(max_norm=5.0))
+    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.9, x_encoder_num_layers=12))
 
 # learning policy
 param_scheduler = [
@@ -329,7 +328,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="RTFormer-KP", name="beit-b_share_sum_convnext-s_ld_090_lr1e-4_aux_fcn")),
+                dict(type='WandbVisBackend', init_kwargs=dict(project="RTFormer-KP", name="beit-b_share_sum_convnext-s_ld_090_lr2e-4_aux_fcn")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')

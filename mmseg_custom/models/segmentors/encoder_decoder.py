@@ -1,14 +1,17 @@
 # Copyright (c) OpenMMLab. All rights reserved.
-from typing import List, Optional
+from typing import List, Optional, Union, Dict
 import inspect
 
+import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch import Tensor
 
+from mmengine_custom.model import is_model_wrapper
+
 from mmseg_custom.registry import MODELS
 from mmseg_custom.utils import (ConfigType, OptConfigType, OptMultiConfig,
-                                OptSampleList, SampleList, add_prefix)
+                                OptSampleList, SampleList, add_prefix, ForwardResults)
 from .base import BaseSegmentor
 
 
@@ -361,3 +364,187 @@ class EncoderDecoder(BaseSegmentor):
         # unravel batch dim
         seg_pred = list(seg_pred)
         return seg_pred
+
+    def predict_featmap_step(self, data: Union[dict, tuple, list], selected_stage) -> list:
+        """``BaseModel`` implements ``test_step`` the same as ``val_step``.
+
+        Args:
+            data (dict or tuple or list): Data sampled from dataset.
+
+        Returns:
+            list: The predictions of given data.
+        """
+        data = self.data_preprocessor(data, False)
+        return self._predict_featmap_forward(data, selected_stage)  # type: ignore
+
+    def _predict_featmap_forward(self, data: Union[dict, tuple, list], selected_stage = 0):
+        """Unpacks data for :meth:`forward`
+
+        Args:
+            data (dict or tuple or list): Data sampled from dataset.
+            mode (str): Mode of forward.
+
+        Returns:
+            dict or list: Results of training or testing mode.
+        """
+        if isinstance(data, dict):
+            results = self.predict_featmap(**data, selected_stage = selected_stage)
+        elif isinstance(data, (list, tuple)):
+            results = self.predict_featmap(*data)
+        else:
+            raise TypeError('Output of `data_preprocessor` should be '
+                            f'list, tuple or dict, but got {type(data)}')
+        return results
+
+    def predict_featmap(self,
+                inputs: Tensor,
+                data_samples: OptSampleList = None,
+                selected_stage = 0):
+        """Predict results from a batch of inputs and data samples with post-
+        processing.
+
+        Args:
+            inputs (Tensor): Inputs with shape (N, C, H, W).
+            data_samples (List[:obj:`SegDataSample`], optional): The seg data
+                samples. It usually includes information such as `metainfo`
+                and `gt_sem_seg`.
+
+        Returns:
+            list[:obj:`SegDataSample`]: Segmentation results of the
+            input images. Each SegDataSample usually contain:
+
+            - ``pred_sem_seg``(PixelData): Prediction of semantic segmentation.
+            - ``seg_logits``(PixelData): Predicted logits of semantic
+                segmentation before normalization.
+        """
+        if data_samples is not None:
+            batch_img_metas = [
+                data_sample.metainfo for data_sample in data_samples
+            ]
+        else:
+            batch_img_metas = [
+                dict(
+                    ori_shape=inputs.shape[2:],
+                    img_shape=inputs.shape[2:],
+                    pad_shape=inputs.shape[2:],
+                    padding_size=[0, 0, 0, 0])
+            ] * inputs.shape[0]
+
+        seg_logits = self.inference_partial(inputs, batch_img_metas, selected_stage)
+
+        return seg_logits
+
+    def inference_partial(self, inputs: Tensor, batch_img_metas: List[dict], selected_stage) -> Tensor:
+        """Inference with slide/whole style.
+
+        Args:
+            inputs (Tensor): The input image of shape (N, 3, H, W).
+            batch_img_metas (List[dict]): List of image metainfo where each may
+                also contain: 'img_shape', 'scale_factor', 'flip', 'img_path',
+                'ori_shape', 'pad_shape', and 'padding_size'.
+                For details on the values of these keys see
+                `mmseg_custom/datasets/pipelines/formatting.py:PackSegInputs`.
+
+        Returns:
+            Tensor: The segmentation results, seg_logits from model of each
+                input image.
+        """
+
+        assert self.test_cfg.mode in ['slide', 'whole']
+        ori_shape = batch_img_metas[0]['ori_shape']
+        assert all(_['ori_shape'] == ori_shape for _ in batch_img_metas)
+        if self.test_cfg.mode == 'slide':
+            seg_logit = self.slide_inference_partial(inputs, batch_img_metas, selected_stage)
+        else:
+            # TODO: jhli support non-vit models inference
+            print("WARNING: Customized inference_partial func only support slide inference for now!")
+            seg_logit = self.whole_inference_partial(inputs, batch_img_metas)
+
+        return seg_logit
+
+    def slide_inference_partial(self, inputs: Tensor,
+                        batch_img_metas: List[dict], selected_stage) -> Tensor:
+        """Inference by sliding-window with overlap.
+
+        If h_crop > h_img or w_crop > w_img, the small patch will be used to
+        decode without padding.
+
+        Args:
+            inputs (tensor): the tensor should have a shape NxCxHxW,
+                which contains all images in the batch.
+            batch_img_metas (List[dict]): List of image metainfo where each may
+                also contain: 'img_shape', 'scale_factor', 'flip', 'img_path',
+                'ori_shape', and 'pad_shape'.
+                For details on the values of these keys see
+                `mmseg_custom/datasets/pipelines/formatting.py:PackSegInputs`.
+
+        Returns:
+            Tensor: The segmentation results, seg_logits from model of each
+                input image.
+        """
+
+        h_stride, w_stride = self.test_cfg.stride
+        h_crop, w_crop = self.test_cfg.crop_size
+        batch_size, _, h_img, w_img = inputs.size()
+
+        module_name = f'fc{selected_stage+1}'
+        out_channels = getattr(self.backbone, module_name).out_channels
+        h_grids = max(h_img - h_crop + h_stride - 1, 0) // h_stride + 1
+        w_grids = max(w_img - w_crop + w_stride - 1, 0) // w_stride + 1
+        preds = inputs.new_zeros((batch_size, out_channels, h_img, w_img))
+        count_mat = inputs.new_zeros((batch_size, 1, h_img, w_img))
+        for h_idx in range(h_grids):
+            for w_idx in range(w_grids):
+                y1 = h_idx * h_stride
+                x1 = w_idx * w_stride
+                y2 = min(y1 + h_crop, h_img)
+                x2 = min(x1 + w_crop, w_img)
+                y1 = max(y2 - h_crop, 0)
+                x1 = max(x2 - w_crop, 0)
+                crop_img = inputs[:, :, y1:y2, x1:x2]
+                # change the image shape to patch shape
+                batch_img_metas[0]['img_shape'] = crop_img.shape[2:]
+                # the output of encode_decode is seg logits tensor map
+                # with shape [N, C, H, W]
+                crop_seg_logit = self.encode_partial(crop_img, selected_stage)
+                crop_seg_logit = F.interpolate(
+                    crop_seg_logit, size=crop_img.shape[2:], mode='bilinear', align_corners=False)
+                preds += F.pad(crop_seg_logit,
+                               (int(x1), int(preds.shape[3] - x2), int(y1),
+                                int(preds.shape[2] - y2)))
+
+                count_mat[:, :, y1:y2, x1:x2] += 1
+        assert (count_mat == 0).sum() == 0
+        seg_logits = preds / count_mat
+
+        return seg_logits
+
+    def whole_inference_partial(self, inputs: Tensor,
+                        batch_img_metas: List[dict]) -> Tensor:
+        """Inference with full image.
+
+        Args:
+            inputs (Tensor): The tensor should have a shape NxCxHxW, which
+                contains all images in the batch.
+            batch_img_metas (List[dict]): List of image metainfo where each may
+                also contain: 'img_shape', 'scale_factor', 'flip', 'img_path',
+                'ori_shape', and 'pad_shape'.
+                For details on the values of these keys see
+                `mmseg_custom/datasets/pipelines/formatting.py:PackSegInputs`.
+
+        Returns:
+            Tensor: The segmentation results, seg_logits from model of each
+                input image.
+        """
+
+        seg_logits = self.encode_partial(inputs, batch_img_metas)
+
+        return seg_logits
+
+    def encode_partial(self, inputs: Tensor,
+                      selected_stage) -> Tensor:
+        """Encode images with backbone and decode into a semantic segmentation
+        map of the same size as input."""
+        seg_logits = self.extract_feat(inputs)
+        # output stage1 features
+        return seg_logits[selected_stage]

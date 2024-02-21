@@ -1,6 +1,6 @@
 # dataset settings
 dataset_type = 'MMMFDataset'
-data_root = '/home/TIV/data/MF_RGBT'
+data_root = '/media/ljh/Kobe24/MF_RGBT'
 
 # vit-adapter needs square, so crop must has h==w
 crop_size = (480, 480) # h, w
@@ -109,7 +109,7 @@ val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU', 'mFscore'])
 test_evaluator = val_evaluator
 
 convnext_pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-small_3rdparty_32xb128-noema_in1k_20220301-303e75e3.pth'
-beit_pretrained = '/home/TIV/pretrained/beitv2_base_patch16_224_pt1k_ft21k.pth'
+beit_pretrained = '/home/ljh/Desktop/TIV/TIV/pretrained/beitv2_base_patch16_224_pt1k_ft21k.pth'
 
 
 data_preprocessor = dict(
@@ -319,7 +319,7 @@ default_hooks = dict(
         type='CheckpointHook', by_epoch=True, interval=100,
         save_best='mIoU'),
     sampler_seed=dict(type='DistSamplerSeedHook'),
-    visualization=dict(type='SegVisualizationHook', interval=1, draw=False))
+    visualization=dict(type='SegVisualizationHook', interval=1, draw=True))
 
 # Runtime configs
 default_scope = 'mmseg_custom'
@@ -329,7 +329,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                dict(type='WandbVisBackend', init_kwargs=dict(project="RTFormer-MFNet", name="beit-b_share_sum_convnext-s_ld_090_lr1e-4_w/o_weightloss")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="RTFormer-MFNet", name="beit-b_share_sum_convnext-s_ld_090_lr1e-4_w/o_weightloss")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')

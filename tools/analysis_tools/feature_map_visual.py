@@ -206,7 +206,7 @@ def main():
               # 'backbone.norm_x0',
               # 'backbone.norm_y0',
               # 'backbone.norm_x3',
-              'backbone.norm_y3'
+              'backbone.norm1'
     ]
     source = dict.fromkeys(source)
 

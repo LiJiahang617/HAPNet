@@ -4,7 +4,10 @@ import copy
 from collections import OrderedDict
 import warnings
 import math
+import os
 
+import numpy as np
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.utils.checkpoint as cp
@@ -25,6 +28,45 @@ from ..utils import GRN, build_norm_layer
 from .base_backbone import BaseBackbone
 from .beit import BEiT
 
+
+# ----------------------------------------for featmap visualization----------------------------------------
+def save_feature_maps(feature, stage, save_dir='path_to_save', cmap='viridis'):
+    """
+    保存特征图到PNG图像
+    :param feature: 特征张量，形状为 [batch_size, channels, height, width]
+    :param stage: 特征所在的stage，用于文件命名
+    :param save_dir: 保存图像的路径
+    :param cmap: 使用的颜色映射
+    """
+    if not os.path.exists(save_dir):
+        os.makedirs(save_dir)
+
+    batch_size, channels, _, _ = feature.shape
+    for b in range(batch_size):
+        for c in range(channels):
+            # 提取单个特征图
+            fmap = feature[b, c].cpu().detach().numpy()
+            # 标准化特征图到0-1
+            fmap_norm = (fmap - np.min(fmap)) / (np.max(fmap) - np.min(fmap))
+            # 转换为0-255的uint8
+            fmap_scaled = (fmap_norm * 255).astype(np.uint8)
+            # 保存特征图
+            file_name = f'stage{stage}_b{b}_c{c}.png'
+            plt.imsave(os.path.join(save_dir, file_name), fmap_scaled, cmap=cmap)
+            print(f"Feature map saved: {file_name}")
+
+def save_selected_feature_maps(features, selected_stages, save_dir='path_to_save', cmap='viridis'):
+    """
+    保存选定stages的特征图到PNG图像
+    :param features: 包含所有stages特征的列表
+    :param selected_stages: 一个包含所选stages编号的列表
+    :param save_dir: 保存图像的路径
+    :param cmap: 使用的颜色映射
+    """
+    for stage, feature in enumerate(features, start=1):
+        if stage in selected_stages:
+            save_feature_maps(feature, stage, save_dir, cmap)
+# ----------------------------------------for featmap visualization----------------------------------------
 
 def get_reference_points(spatial_shapes, device):
     reference_points_list = []
@@ -521,4 +563,9 @@ class BEiTAdapter_rgbxsum(BEiT):
         f2 = self.norm2(c2)
         f3 = self.norm3(c3)
         f4 = self.norm4(c4)
+        # # -------------------------------------------for visualzation-------------------------------------------
+        # # 定义要保存的stages
+        # selected_stages = [1]  # 保存第1个stage的特征图
+        # save_selected_feature_maps([f1, f2, f3, f4], selected_stages, 'your_save_directory', 'viridis')
+        # # -------------------------------------------for visualzation-------------------------------------------
         return [f1, f2, f3, f4]
