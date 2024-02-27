@@ -1,14 +1,14 @@
 # dataset settings
 dataset_type = 'MMMFDataset'
-data_root = '/media/ljh/Kobe24/MF_RGBT'
-# TODO: this can left to effectiveness of fusion in ablation
+data_root = '/media/ljh/Kobe24/MF_RGBT_enhance'
+
 # vit-adapter needs square, so crop must has h==w
 crop_size = (480, 480) # h, w
 img_size = (480, 640) # h, w
 
 train_pipeline = [
     # modality value must be modified
-    dict(type='LoadMFImageFromFile', to_float32=False, modality='RGB'),
+    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(type='LoadAnnotations', reduce_zero_label=False),
     dict(type='RandomResize', scale=(640, 480),
@@ -19,7 +19,7 @@ train_pipeline = [
 ]
 val_pipeline = [
     # modality value must be modified
-    dict(type='LoadMFImageFromFile', to_float32=False, modality='RGB'),
+    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(
         type='Resize',
@@ -31,7 +31,7 @@ val_pipeline = [
 ]
 test_pipeline = [
     # modality value must be modified
-    dict(type='LoadMFImageFromFile', to_float32=False, modality='RGB'),
+    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(type='Resize', scale=(640, 480), keep_ratio=True),
     dict(type='LoadAnnotations', reduce_zero_label=False),
@@ -40,7 +40,7 @@ test_pipeline = [
 # tta settings: Note: val will not use this strategy
 img_ratios = [1.0, 1.25, 1.5]  # 多尺度预测缩放比例
 tta_pipeline = [  # 多尺度测试
-    dict(type='LoadMFImageFromFile', to_float32=False, modality='RGB'),
+    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(
         type='TestTimeAug',
@@ -109,7 +109,7 @@ val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU', 'mFscore'])
 test_evaluator = val_evaluator
 
 convnext_pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-small_3rdparty_32xb128-noema_in1k_20220301-303e75e3.pth'
-beit_pretrained = '/media/ljh/Kobe24/pretrained/beitv2_base_patch16_224_pt1k_ft21k.pth'
+beit_pretrained = '/home/ljh/Desktop/TIV/TIV/pretrained/beitv2_base_patch16_224_pt1k_ft21k.pth'
 
 
 data_preprocessor = dict(
@@ -130,7 +130,7 @@ model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
     backbone=dict(
-        type='mmpretrain_custom.BEiTAdapter_rgbxsum',
+        type='mmpretrain_custom.BEiTAdapter_share_patch',
         pretrained=beit_pretrained,
         img_size=480,
         patch_size=16,
@@ -267,6 +267,19 @@ model = dict(
                         eps=1.0)
                 ]),
             sampler=dict(type='mmdet_custom.MaskPseudoSampler'))),
+    auxiliary_head=dict(
+        type='FCNHead',
+        in_channels=768,
+        in_index=0,
+        channels=256,
+        num_convs=1,
+        concat_input=False,
+        dropout_ratio=0.1,
+        num_classes=num_classes,
+        norm_cfg=dict(type='SyncBN', requires_grad=True),
+        align_corners=False,
+        loss_decode=dict(
+            type='CrossEntropyLoss', use_sigmoid=False, loss_weight=0.4)),
     train_cfg=dict(),
     test_cfg=dict(mode='slide', crop_size=crop_size, stride=(320, 320))) #h,w
 
@@ -277,7 +290,7 @@ optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
     constructor='LayerDecayOptimizerConstructor',
-    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.95, x_encoder_num_layers=12),
+    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.9, x_encoder_num_layers=12),
     clip_grad=dict(max_norm=5.0))
 
 # learning policy
@@ -306,7 +319,7 @@ default_hooks = dict(
         type='CheckpointHook', by_epoch=True, interval=100,
         save_best='mIoU'),
     sampler_seed=dict(type='DistSamplerSeedHook'),
-    visualization=dict(type='SegVisualizationHook', interval=1, draw=False))
+    visualization=dict(type='SegVisualizationHook', interval=1, draw=True))
 
 # Runtime configs
 default_scope = 'mmseg_custom'
@@ -316,7 +329,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet", name="0-1_beit-adapter-b_sm_share_sum_convnext-s_constructor095_lr1e-4_epo200")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="HeFFT_ablation_MFNet", name="adapter-b_convnext-s_share_patch_ld_090_lr1e-4")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')

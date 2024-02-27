@@ -17,6 +17,11 @@ from .spm_rgbx_sum_adapter import BEiTAdapter_spmsum
 from .beit_sum_fapn_adapter import BEiTAdapter_rgbxsum_fapn
 from .beit_sum_fapn_c1_c2 import BEiTAdapter_rgbxsum_fapn_c1_c2_relu
 from .beit_sum_fapn_c1_c2_worelu import BEiTAdapter_rgbxsum_fapn_c1_c2_worelu
+from .beit_ablation import BEiT_ablation
+from .beit_sum_adapter_separate_patch import BEiTAdapter_sep_patch
+from .beit_sum_adapter_share_patch import BEiTAdapter_share_patch
+from .beit_sum_adapter_thermal_patch_alone import BEiTAdapter_thermal_patch_alone
+from .beit_sum_adapter_rgbt_conv_patch import BEiTAdapter_rgbt_conv_patch
 
 __all__ = [
     'ConvNeXt', 'ShareConvNeXt', 'ConvNeXtCatAdapter',
@@ -24,5 +29,9 @@ __all__ = [
     'TwinConvNeXt', 'SumTwinConvNeXt', 'ConvNeXtAdapter', 'BEiT_ori',
     'BEiTAdapter_rgbxcat', 'BEiTAdapter_rgbxsum', 'BEiTAdapter_ori',
     'BEiTAdapter_mmlab', 'BEiTAdapter_spmsum', 'BEiTAdapter_rgbxsum_fapn',
-    'BEiTAdapter_rgbxsum_fapn_c1_c2_relu', 'BEiTAdapter_rgbxsum_fapn_c1_c2_worelu'
+    'BEiTAdapter_rgbxsum_fapn_c1_c2_relu', 'BEiTAdapter_rgbxsum_fapn_c1_c2_worelu',
+    # for ablation study of ECCV 2024
+    'BEiT_ablation', 'BEiTAdapter_sep_patch', 'BEiTAdapter_share_patch',
+    'BEiTAdapter_thermal_patch_alone', 'BEiTAdapter_rgbt_conv_patch'
+
 ]
