@@ -130,7 +130,7 @@ model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
     backbone=dict(
-        type='mmpretrain_custom.BEiTAdapter_mpm_thermal_alone',
+        type='mmpretrain_custom.BEiTAdapter_patch_rgb_alone_mpm_thermal_alone',
         pretrained=beit_pretrained,
         img_size=480,
         patch_size=16,
@@ -316,7 +316,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="HeFFT_ablation_MFNet", name="adapter-b_convnext-s_thermal_alone_mpm_no_aux")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="HeFFT_ablation_MFNet", name="adapter-b_convnext-s_rgb_alone_patch_thermal_alone_mpm_no_aux")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')

@@ -1,6 +1,6 @@
 # dataset settings
 dataset_type = 'MMMFDataset'
-data_root = '/media/ljh/Kobe24/MF_RGBT_enhance'
+data_root = '/media/ljh/Kobe24/MF_RGBT'
 
 # vit-adapter needs square, so crop must has h==w
 crop_size = (480, 480) # h, w
@@ -289,13 +289,13 @@ param_scheduler = [
         eta_min=0,
         power=0.9,
         begin=0,
-        end=75,
+        end=50,
         by_epoch=True)
 ]
 
 # training schedule for 160k
 train_cfg = dict(
-    type='EpochBasedTrainLoop', max_epochs=75, val_begin=1, val_interval=1)
+    type='EpochBasedTrainLoop', max_epochs=50, val_begin=1, val_interval=1)
 val_cfg = dict(type='ValLoop')
 test_cfg = dict(type='TestLoop')
 default_hooks = dict(
@@ -316,7 +316,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="HeFFT_ablation_MFNet", name="adapter-b_convnext-s_thermal_patch_no_aux")),
+                dict(type='WandbVisBackend', init_kwargs=dict(project="HeFFT_ablation_MFNet", name="adapter-b_convnext-s_thermal_alone_patch_rgb_thermal_mpm_no_aux")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
