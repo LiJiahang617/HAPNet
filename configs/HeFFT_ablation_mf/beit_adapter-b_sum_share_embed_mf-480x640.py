@@ -130,7 +130,7 @@ model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
     backbone=dict(
-        type='mmpretrain_custom.BEiTAdapter_thermal_patch_alone',
+        type='mmpretrain_custom.BEiTAdapter_sum_share_patch',
         pretrained=beit_pretrained,
         img_size=480,
         patch_size=16,
@@ -267,19 +267,6 @@ model = dict(
                         eps=1.0)
                 ]),
             sampler=dict(type='mmdet_custom.MaskPseudoSampler'))),
-    auxiliary_head=dict(
-        type='FCNHead',
-        in_channels=768,
-        in_index=0,
-        channels=256,
-        num_convs=1,
-        concat_input=False,
-        dropout_ratio=0.1,
-        num_classes=num_classes,
-        norm_cfg=dict(type='SyncBN', requires_grad=True),
-        align_corners=False,
-        loss_decode=dict(
-            type='CrossEntropyLoss', use_sigmoid=False, loss_weight=0.4)),
     train_cfg=dict(),
     test_cfg=dict(mode='slide', crop_size=crop_size, stride=(320, 320))) #h,w
 
@@ -329,7 +316,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="HeFFT_ablation_MFNet", name="adapter-b_convnext-s_thermal_alone_patch_no_aux")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="HeFFT_ablation_MFNet", name="adapter-b_convnext-s_sum_share_patch_no_aux")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
