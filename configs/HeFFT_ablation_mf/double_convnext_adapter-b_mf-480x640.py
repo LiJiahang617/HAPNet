@@ -1,6 +1,113 @@
-_base_ = [
-'../_base_/datasets/mmmf_0-1_640x480.py'
+# dataset settings
+dataset_type = 'MMMFDataset'
+data_root = '/media/ljh/Kobe24/MF_RGBT'
+
+# vit-adapter needs square, so crop must has h==w
+crop_size = (480, 480) # h, w
+img_size = (480, 640) # h, w
+
+train_pipeline = [
+    # modality value must be modified
+    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
+    dict(type='StackByChannel', keys=('img', 'ano')),
+    dict(type='LoadAnnotations', reduce_zero_label=False),
+    dict(type='RandomResize', scale=(640, 480),
+         ratio_range=(0.5, 2.0), keep_ratio=True),  # Note: w, h instead of h, w
+    dict(type='RandomCrop', crop_size=crop_size, cat_max_ratio=0.75),
+    dict(type='RandomFlip', prob=0.5),
+    dict(type='PackSegInputs')
 ]
+val_pipeline = [
+    # modality value must be modified
+    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
+    dict(type='StackByChannel', keys=('img', 'ano')),
+    dict(
+        type='Resize',
+        scale=(640, 480), keep_ratio=True),  # Note: w, h instead of h, w
+    # add loading annotation after ``Resize`` because ground truth
+    # does not need to do resize data transform
+    dict(type='LoadAnnotations', reduce_zero_label=False),
+    dict(type='PackSegInputs')
+]
+test_pipeline = [
+    # modality value must be modified
+    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
+    dict(type='StackByChannel', keys=('img', 'ano')),
+    dict(type='Resize', scale=(640, 480), keep_ratio=True),
+    dict(type='LoadAnnotations', reduce_zero_label=False),
+    dict(type='PackSegInputs')
+]
+# tta settings: Note: val will not use this strategy
+img_ratios = [1.0, 1.25, 1.5]  # 多尺度预测缩放比例
+tta_pipeline = [  # 多尺度测试
+    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
+    dict(type='StackByChannel', keys=('img', 'ano')),
+    dict(
+        type='TestTimeAug',
+        transforms=[
+            [
+                dict(type='Resize', scale_factor=r, keep_ratio=True)
+                for r in img_ratios
+            ],
+            [
+                dict(type='RandomFlip', prob=0., direction='horizontal'),
+                dict(type='RandomFlip', prob=1., direction='horizontal')
+            ], [dict(type='LoadAnnotations')], [dict(type='PackSegInputs')]
+        ])
+]
+
+train_dataloader = dict(
+    batch_size=3,
+    num_workers=16,
+    persistent_workers=True,
+    sampler=dict(type='DefaultSampler', shuffle=True),
+    dataset=dict(
+        type=dataset_type,
+        data_root=data_root,
+        reduce_zero_label=False,
+        # have to modify next 2 properties at the same time
+        modality='thermal',
+        data_prefix=dict(
+            img_path='images/train',
+            thermal_path='thermal/train',
+            seg_map_path='labels/train'),
+        pipeline=train_pipeline))
+val_dataloader = dict(
+    batch_size=1,
+    num_workers=16,
+    persistent_workers=True,
+    sampler=dict(type='DefaultSampler', shuffle=False),
+    dataset=dict(
+        type=dataset_type,
+        data_root=data_root,
+        reduce_zero_label=False,
+        # have to modify next 2 properties at the same time
+        modality='thermal',
+        data_prefix=dict(
+            img_path='images/test',
+            thermal_path='thermal/test',
+            seg_map_path='labels/test'),
+        pipeline=val_pipeline))
+test_dataloader = dict(
+    batch_size=1,
+    num_workers=16,
+    persistent_workers=True,
+    sampler=dict(type='DefaultSampler', shuffle=False),
+    dataset=dict(
+        type=dataset_type,
+        data_root=data_root,
+        reduce_zero_label=False,
+        # have to modify next 2 properties at the same time
+        modality='thermal',
+        data_prefix=dict(
+            img_path='images/test',
+            thermal_path='thermal/test',
+            seg_map_path='labels/test'),
+        pipeline=test_pipeline))
+
+val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU', 'mFscore'])
+test_evaluator = val_evaluator
+
 
 pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-small_3rdparty_32xb128-noema_in1k_20220301-303e75e3.pth'
 
@@ -14,14 +121,12 @@ data_preprocessor = dict(
     seg_pad_val=255,
     size=crop_size)
 num_classes = 9
-# dataset settings
-train_dataloader = dict(batch_size=5, num_workers=20)
 
 model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
     backbone=dict(
-        type='mmpretrain_custom.ConvNeXtAdapter',
+        type='mmpretrain_custom.DoubleConvNeXtAdapter',
         arch='small',
         out_indices=[0, 1, 2, 3],
         drop_path_rate=0.3,
@@ -32,7 +137,7 @@ model = dict(
             prefix='backbone.')),
     decode_head=dict(
         type='Mask2FormerHead',
-        in_channels=[96, 192, 384, 768],  # modified here
+        in_channels=[96, 192, 384, 768], # modified here
         strides=[4, 8, 16, 32],
         feat_channels=256,
         out_channels=256,
@@ -137,7 +242,7 @@ model = dict(
                 ]),
             sampler=dict(type='mmdet_custom.MaskPseudoSampler'))),
     train_cfg=dict(),
-    test_cfg=dict(mode='whole'))
+    test_cfg=dict(mode='slide', crop_size=crop_size, stride=(320, 320))) #h,w
 
 # optimizer
 optimizer = dict(
@@ -156,13 +261,13 @@ param_scheduler = [
         eta_min=0,
         power=0.9,
         begin=0,
-        end=200,
+        end=50,
         by_epoch=True)
 ]
 
 # training schedule for 160k
 train_cfg = dict(
-    type='EpochBasedTrainLoop', max_epochs=200, val_begin=1, val_interval=1)
+    type='EpochBasedTrainLoop', max_epochs=50, val_begin=1, val_interval=1)
 val_cfg = dict(type='ValLoop')
 test_cfg = dict(type='TestLoop')
 default_hooks = dict(
@@ -183,7 +288,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet", name="convnext-adapter-s_lr_00002")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="HeFFT_ablation_MFNet", name="double_convnext-adapter-b_no_aux")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
@@ -193,3 +298,4 @@ load_from = None
 resume = False
 
 tta_model = dict(type='SegTTAModel')
+

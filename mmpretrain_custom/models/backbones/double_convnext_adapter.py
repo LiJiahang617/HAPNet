@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.utils.checkpoint as cp
 from mmcv_custom.cnn.bricks import DropPath
-from mmcv_custom.cnn import ConvModule
+from mmcv_custom.cnn import Conv2d, ConvModule
 from mmcv_custom.ops import MultiScaleDeformableAttention
 from mmengine_custom.model import BaseModule, ModuleList, Sequential
 from mmengine_custom.logging import print_log
@@ -20,7 +20,6 @@ from ..utils import GRN, build_norm_layer
 from .base_backbone import BaseBackbone
 
 
-# 这个应该用不了，不太合理。
 class ConvNeXtBlock(BaseModule):
     """ConvNeXt Block.
 
@@ -234,9 +233,9 @@ class ConvFFN(nn.Module):
         self.fc2 = nn.Linear(hidden_features, out_features)
         self.drop = nn.Dropout(drop)
 
-    def forward(self, x, H, W):
+    def forward(self, x, H, W, stage_index):
         x = self.fc1(x)
-        x = self.dwconv(x, H, W)
+        x = self.dwconv(x, H, W, stage_index)
         x = self.act(x)
         x = self.drop(x)
         x = self.fc2(x)
@@ -248,13 +247,18 @@ class DWConv(nn.Module):
     def __init__(self, dim=768):
         super().__init__()
         self.dwconv = nn.Conv2d(dim, dim, 3, 1, 1, bias=True, groups=dim)
+        self.scale = [[1/2, 1/4, 1/8],
+                      [1., 1/2, 1/4],
+                      [2., 1., 1/2],
+                      [4., 2., 1.]]
 
-    def forward(self, x, H, W):
+    def forward(self, x, H, W, stage=None):
+        scale = self.scale[stage]
         B, N, C = x.shape
         n = N // 21
-        x1 = x[:, 0:16 * n, :].transpose(1, 2).view(B, C, H * 2, W * 2).contiguous()
-        x2 = x[:, 16 * n:20 * n, :].transpose(1, 2).view(B, C, H, W).contiguous()
-        x3 = x[:, 20 * n:, :].transpose(1, 2).view(B, C, H // 2, W // 2).contiguous()
+        x1 = x[:, 0:16 * n, :].transpose(1, 2).view(B, C, int(H * scale[0]), int(W * scale[0])).contiguous()
+        x2 = x[:, 16 * n:20 * n, :].transpose(1, 2).view(B, C, int(H * scale[1]), int(W * scale[1])).contiguous()
+        x3 = x[:, 20 * n:, :].transpose(1, 2).view(B, C, int(H * scale[2]), int(W * scale[2])).contiguous()
         x1 = self.dwconv(x1).flatten(2).transpose(1, 2)
         x2 = self.dwconv(x2).flatten(2).transpose(1, 2)
         x3 = self.dwconv(x3).flatten(2).transpose(1, 2)
@@ -267,29 +271,28 @@ class Extractor(nn.Module):
                  with_cffn=True, cffn_ratio=0.25, drop=0., drop_path=0.,
                  norm_layer=partial(nn.LayerNorm, eps=1e-6), with_cp=False):
         super().__init__()
-        self.query_norm = norm_layer(dim)
-        self.feat_norm = norm_layer(dim)
+        self.query_norm = nn.LayerNorm(dim, eps=1e-6)
+        self.feat_norm = nn.LayerNorm(dim, eps=1e-6)
         self.attn = MultiScaleDeformableAttention(embed_dims=dim, num_levels=n_levels, num_heads=num_heads,
-                                 num_points=n_points, value_proj_ratio=deform_ratio)
+                                 num_points=n_points, value_proj_ratio=deform_ratio, batch_first=True)
         self.with_cffn = with_cffn
         self.with_cp = with_cp
         if with_cffn:
             self.ffn = ConvFFN(in_features=dim, hidden_features=int(dim * cffn_ratio), drop=drop)
-            self.ffn_norm = norm_layer(dim)
+            self.ffn_norm = nn.LayerNorm(dim, eps=1e-6)
             self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
 
-    def forward(self, query, reference_points, feat, spatial_shapes, level_start_index, H, W):
+    def forward(self, query, reference_points, feat, spatial_shapes, level_start_index, H, W, stage_index):
 
         def _inner_forward(query, feat):
 
-            attn = self.attn(self.query_norm(query), reference_points,
-                             self.feat_norm(feat), spatial_shapes,
-                             level_start_index, None)
+            attn = self.attn(query=self.query_norm(query), reference_points=reference_points,
+                             value=self.feat_norm(feat), spatial_shapes=spatial_shapes,
+                             level_start_index=level_start_index, key_padding_mask=None)
             # residual connection has been added inside of msdeformable attention
             query = attn
-
             if self.with_cffn:
-                query = query + self.drop_path(self.ffn(self.ffn_norm(query), H, W))
+                query = query + self.drop_path(self.ffn(self.ffn_norm(query), H, W, stage_index))
             return query
 
         if self.with_cp and query.requires_grad:
@@ -305,19 +308,19 @@ class Injector(nn.Module):
                  norm_layer=partial(nn.LayerNorm, eps=1e-6), init_values=0., with_cp=False):
         super().__init__()
         self.with_cp = with_cp
-        self.query_norm = norm_layer(dim)
-        self.feat_norm = norm_layer(dim)
-        self.attn = MultiScaleDeformableAttention(d_model=dim, n_levels=n_levels, n_heads=num_heads,
-                                 n_points=n_points, ratio=deform_ratio)
+        self.query_norm = nn.LayerNorm(dim, eps=1e-6)
+        self.feat_norm = nn.LayerNorm(dim, eps=1e-6)
+        self.attn = MultiScaleDeformableAttention(embed_dims=dim, num_levels=n_levels, num_heads=num_heads,
+                                 num_points=n_points, value_proj_ratio=deform_ratio, batch_first=True)
         self.gamma = nn.Parameter(init_values * torch.ones((dim)), requires_grad=True)
 
     def forward(self, query, reference_points, feat, spatial_shapes, level_start_index):
 
         def _inner_forward(query, feat):
 
-            attn = self.attn(self.query_norm(query), reference_points,
-                             self.feat_norm(feat), spatial_shapes,
-                             level_start_index, None)
+            attn = self.attn(query=self.query_norm(query), reference_points=reference_points,
+                             value=self.feat_norm(feat), spatial_shapes=spatial_shapes,
+                             level_start_index=level_start_index, key_padding_mask=None)
             # residual connection has been added inside of msdeformable attention
             return query + self.gamma * (attn-query)
 
@@ -351,7 +354,7 @@ class InteractionBlock(nn.Module):
         else:
             self.extra_extractors = None
 
-    def forward(self, x, c, blocks, deform_inputs1, deform_inputs2, bs, dim, H, W):
+    def forward(self, x, c, blocks, proj_layer, deform_inputs1, deform_inputs2, bs, dim, H, W, stage_index):
         # x -> b, num_query, c (num_query=H*W) as msdeformable attention input
         x = self.injector(query=x, reference_points=deform_inputs1[0],
                           feat=c, spatial_shapes=deform_inputs1[1],
@@ -364,17 +367,20 @@ class InteractionBlock(nn.Module):
         x = x.flatten(2).transpose(1, 2)
         c = self.extractor(query=c, reference_points=deform_inputs2[0],
                            feat=x, spatial_shapes=deform_inputs2[1],
-                           level_start_index=deform_inputs2[2], H=H, W=W)
-        if self.extra_extractors is not None:
+                           level_start_index=deform_inputs2[2], H=H, W=W, stage_index=stage_index)
+        if self.extra_extractors is not None and proj_layer is None:
             for extractor in self.extra_extractors:
                 c = extractor(query=c, reference_points=deform_inputs2[0],
                               feat=x, spatial_shapes=deform_inputs2[1],
-                              level_start_index=deform_inputs2[2], H=H, W=W)
-        return x, c
+                              level_start_index=deform_inputs2[2], H=H, W=W, stage_index=stage_index)
+            return x, c
+        else:
+            c = proj_layer(c)
+            return x, c
 
 
 @MODELS.register_module()
-class ConvNeXtAdapter(BaseBackbone):
+class DoubleConvNeXtAdapter(BaseBackbone):
     """ConvNeXtAdapter backbone.
 
     Modified from the `official repo
@@ -623,23 +629,23 @@ class ConvNeXtAdapter(BaseBackbone):
                 self.add_module(f'norm_y{i}', norm_layer_y)
         # unify feature channels
         # TODO: consider dynamic or static fusion: x modality features should produce 3 times or use one to iter 3 times
-        self.stage_input_convs = dict()
-        for i in range(self.num_stages):
-            input_convs = nn.ModuleList()
-            for j in range(1, len(self.channels)):
-                in_embed_dim = self.channels[j]
-                out_embed_dim = self.channels[i]
-                input_conv = ConvModule(
-                    in_embed_dim,
-                    out_embed_dim,
-                    kernel_size=1,
-                    stride=1,
-                    padding=0,
-                    norm_cfg=norm_cfg,
-                    act_cfg=None,
-                    bias=True)
-                input_convs.append(input_conv)
-            self.stage_input_convs.update({f'stage{i}': input_convs})
+        self.ms_input_convs = nn.ModuleList()
+        for j in range(1, len(self.channels)):
+            in_embed_dim = self.channels[j]
+            out_embed_dim = self.channels[0]
+            input_conv = ConvModule(
+                in_embed_dim,
+                out_embed_dim,
+                kernel_size=1,
+                stride=1,
+                padding=0,
+                norm_cfg=dict(type='SyncBN', requires_grad=True),
+                act_cfg=None,
+                bias=False)
+            self.ms_input_convs.append(input_conv)
+        self.stage0_1_proj = nn.Linear(self.channels[0], self.channels[1])
+        self.stage1_2_proj = nn.Linear(self.channels[1], self.channels[2])
+        self.stage2_3_proj = nn.Linear(self.channels[2], self.channels[3])
         # RGB-X fusion block
         self.interactions = nn.Sequential(*[InteractionBlock(dim=self.channels[i], num_heads=deform_num_heads,
                                                              n_points=num_points, init_values=init_values,
@@ -650,6 +656,42 @@ class ConvNeXtAdapter(BaseBackbone):
                                                              with_cp=with_cp)
                                             for i in range(len(self.channels))
                                             ])
+        # get 1/4 feature map
+        self.up = nn.ConvTranspose2d(self.channels[1], self.channels[0], 2, 2)
+        # batch norm
+        self.f_norm0 = nn.SyncBatchNorm(self.channels[0])
+        self.f_norm1 = nn.SyncBatchNorm(self.channels[1])
+        self.f_norm2 = nn.SyncBatchNorm(self.channels[2])
+        self.f_norm3 = nn.SyncBatchNorm(self.channels[3])
+        # final out conv for stage 1, 2, 3
+        self.final_conv1 = ConvModule(
+                self.channels[3],
+                self.channels[1],
+                kernel_size=1,
+                stride=1,
+                padding=0,
+                norm_cfg=dict(type='GN', num_groups=32),
+                act_cfg=None,
+                bias=False)
+        self.final_conv2 = ConvModule(
+            self.channels[3],
+            self.channels[2],
+            kernel_size=1,
+            stride=1,
+            padding=0,
+            norm_cfg=dict(type='GN', num_groups=32),
+            act_cfg=None,
+            bias=False)
+        self.final_conv3 = ConvModule(
+            self.channels[3],
+            self.channels[3],
+            kernel_size=1,
+            stride=1,
+            padding=0,
+            norm_cfg=dict(type='GN', num_groups=32),
+            act_cfg=None,
+            bias=False)
+
         self._freeze_stages()
 
     def init_weights(self):
@@ -712,74 +754,87 @@ class ConvNeXtAdapter(BaseBackbone):
             self.load_state_dict(state_dict_x, strict=False)
             self.load_state_dict(state_dict_y, strict=False)
 
-    def forward(self, x):
+    def forward(self, inputs):
+        batch_size, _, ori_h, ori_w = inputs.shape
         # fetch inputs and split it to 2 modalities
-        x, y = torch.split(x, (3, 3), dim=1)
+        rgb, thermal = torch.split(inputs, (3, 3), dim=1)
         # x modality encoder forward
         outs_y = []
         for i, stage_y in enumerate(self.stages_y):
-            y = self.downsample_layers_y[i](y)
-            y = stage_y(y)
+            rgb = self.downsample_layers_y[i](rgb)
+            thermal = self.downsample_layers_y[i](thermal)
+            rgb = stage_y(rgb)
+            thermal = stage_y(thermal)
             # all stages have same feat channels
-            y = self.reduces_x[i](y)
             if i in self.out_indices:
                 norm_layer = getattr(self, f'norm_y{i}')
                 if self.gap_before_final_norm:
-                    gap = y.mean([-2, -1], keepdim=True)
-                    outs_y.append(norm_layer(gap).flatten(1))
+                    gap_rgb = rgb.mean([-2, -1], keepdim=True)
+                    gap_thermal = thermal.mean([-2, -1], keepdim=True)
+                    norm_rgb = norm_layer(gap_rgb).flatten(1)
+                    norm_thermal = norm_layer(gap_thermal).flatten(1)
+                    outs_y.append(norm_rgb + norm_thermal)
                 else:
-                    outs_y.append(norm_layer(y))
+                    outs_y.append(norm_layer(rgb) + norm_layer(thermal))
         # unify x modality multiscale features for msdeformable attention
         # TODO: Re-implement it for currently it is memory-wasted.
-        y_feature_stages = dict() # multiscale x modality feature
-        for i in range(len(self.num_stages)): # 4
-            key = f'stage{i}'
-            stage_input_convs = self.stage_input_convs[key]
-            feat_outs = []
-            for j, input_conv in enumerate(stage_input_convs, start=1): # 3
-                feat_out = input_conv(outs_y[j])
-                feat_out = feat_out.flatten(2).transpose(1, 2)
-                feat_outs.append(feat_out)
-                assert len(feat_out.shape) == 3, 'feature should have 3 dims: B, N, C!'
-            # TODO: consider if only use 3 scale is suitable
-            assert len(feat_outs) == 3, (f'stage_outs should contain 1/8, 1/16, '
-                                          f'1/32 strides features, but found {len(feat_outs)}!')
-            ms_feats_concat = torch.cat([feat_outs[i] for i in range(len(stage_input_convs))], dim=1)
-            y_feature_stages.update({key: ms_feats_concat})
-
+        feat_outs = [] # 3 scale: b, n_i, c
+        for i, input_conv in enumerate(self.ms_input_convs, start=1): # 3
+            assert  i > 0, f'{i} should larger than 0'
+            feat_out = input_conv(outs_y[i])
+            feat_out = feat_out.flatten(2).transpose(1, 2)
+            feat_outs.append(feat_out)
+            assert len(feat_out.shape) == 3, 'feature should have 3 dims: B, N, C!'
+        # TODO: consider if only use 3 scale is suitable
+        assert len(feat_outs) == 3, (f'stage_outs should contain 1/8, 1/16, '
+                                      f'1/32 strides features, but found {len(feat_outs)}!')
+        ms_feats = torch.cat([feat_outs[i] for i in range(len(self.ms_input_convs))], dim=1)
         # rgb+x fusion forward
         outs_x = []
         # (deform_inputs0_1, deform_inputs0_2, deform_inputs1_1, deform_inputs1_2,
         #          deform_inputs2_1, deform_inputs2_2, deform_inputs3_1, deform_inputs3_2)
+        x, _ = torch.split(inputs, (3, 3), dim=1)
         deform_required = deform_inputs(x)
-        # stage 0
+        # stage forward
         for i, layer in enumerate(self.interactions): # length=4
             x = self.downsample_layers_x[i](x)
             bs, dim, H, W = x.shape
             x = x.flatten(2).transpose(1, 2)
             conv_block = self.stages_x[i]
-            ms_y_feat = y_feature_stages[f'stage{i}']
-            x, c = layer(x, ms_y_feat, conv_block, deform_required[2*i],
-                         deform_required[2*i+1], bs, dim, H, W)
+            proj_index = f'stage{i}_{i+1}_proj'
+            proj_layer = getattr(self, proj_index, None)
+            x, ms_feats = layer(x, ms_feats, conv_block, proj_layer, deform_required[2*i],
+                         deform_required[2*i+1], bs, dim, H, W, i)
             # reshape to 4 dims tensor as feature output and norm
             x = x.transpose(1, 2).reshape(bs, dim, H, W).contiguous()
-            norm_layer = getattr(self, f'norm_x{0}')
+            norm_layer = getattr(self, f'norm_x{i}')
             outs_x.append(norm_layer(x))
+        # split & reshape
+        y_1 = ms_feats[:, :feat_outs[0].size(1), :]
+        y_2 = ms_feats[:, feat_outs[0].size(1):feat_outs[0].size(1)+feat_outs[1].size(1), :]
+        y_3 = ms_feats[:, feat_outs[0].size(1)+feat_outs[1].size(1):, :]
 
+        y_1 = y_1.transpose(1, 2).reshape(batch_size, -1, ori_h//8, ori_w//8).contiguous()
+        y_2 = y_2.transpose(1, 2).reshape(batch_size, -1, ori_h // 16, ori_w // 16).contiguous()
+        y_3 = y_3.transpose(1, 2).reshape(batch_size, -1, ori_h // 32, ori_w // 32).contiguous()
+        # change feature channels back to original
+        y_1 = self.final_conv1(y_1)
+        y_2 = self.final_conv2(y_2)
+        y_3 = self.final_conv3(y_3)
+        y_0 = self.up(y_1) + outs_y[0]
+        # add final feature
+        x_0, x_1, x_2, x_3 = outs_x
+        x_0 = x_0 + y_0
+        x_1 = x_1 + y_1
+        x_2 = x_2 + y_2
+        x_3 = x_3 + y_3
+        # final norm
+        f_0 = self.f_norm0(x_0)
+        f_1 = self.f_norm1(x_1)
+        f_2 = self.f_norm2(x_2)
+        f_3 = self.f_norm3(x_3)
 
-
-
-
-
-
-
-
-
-
-        # concat rgb encoder and ano encoder together and feed them to following parts
-        outs = [torch.cat((out_x, out_y), dim=1) for out_x, out_y in zip(outs_x, outs_y)]
-
-        return outs
+        return [f_0, f_1, f_2, f_3]
 
     def _freeze_stages(self):
         for i in range(self.frozen_stages):
@@ -799,5 +854,5 @@ class ConvNeXtAdapter(BaseBackbone):
                 param.requires_grad = False
 
     def train(self, mode=True):
-        super(ConvNeXtAdapter, self).train(mode)
+        super(DoubleConvNeXtAdapter, self).train(mode)
         self._freeze_stages()

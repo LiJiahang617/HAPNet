@@ -363,7 +363,7 @@ class MSDeformAttn(nn.Module):
 
 
 @MODELS.register_module()
-class BEiTAdapter_thermal_patch_alone(BEiT):
+class BEiTAdapter_patch_rgb_alone_mpm_thermal_alone(BEiT):
     arch_settings = {
         'atto': {
             'depths': [2, 2, 6, 2],
@@ -439,7 +439,7 @@ class BEiTAdapter_thermal_patch_alone(BEiT):
                                     out_channels=out_channels)
         """
         self.x_modality_encoder = MODELS.build(x_modality_encoder_)
-        print('Note, this is ablation study for adapter-thermal_patch-embed alone_rgb_thermal_mpm!!!')
+        print('Note, this is ablation study for adapter-rgb_alone_patch_thermal_alone_mpm!!!')
         self.interactions = nn.Sequential(*[
             InteractionBlockWithCls(dim=embed_dim, num_heads=deform_num_heads, n_points=n_points,
                              init_values=init_values, drop_path=self.drop_path_rate,
@@ -501,17 +501,17 @@ class BEiTAdapter_thermal_patch_alone(BEiT):
         c4 = c4 + self.level_embed[2]
         return c2, c3, c4
 
-    def forward(self, x):
+    def forward(self, inputs):
+        # fetch inputs and split it to 2 modalities: rgb:x
+        x, y = torch.split(inputs, (3, 3), dim=1)
         # rgbx_modality_encoder forward
-        c1, c2, c3, c4 = self.x_modality_encoder(x)
+        c1, c2, c3, c4 = self.x_modality_encoder(torch.cat((y,y), dim=1))
         # keep feature channels same
         c1 = self.fc1(c1)
         c2 = self.fc2(c2)
         c3 = self.fc3(c3)
         c4 = self.fc4(c4)
 
-        # fetch inputs and split it to 2 modalities: rgb:x
-        x, y = torch.split(x, (3, 3), dim=1)
         deform_inputs1, deform_inputs2 = deform_inputs(x)
         # fetch bs and emb_dim
         bs, dim, _, _ = c1.shape
@@ -524,9 +524,7 @@ class BEiTAdapter_thermal_patch_alone(BEiT):
         c = torch.cat([c2, c3, c4], dim=1)
 
         # Patch Embedding forward
-        # x, H, W = self.patch_embed(x)
-        x, H, W = self.patch_embed(y)
-        # x = x + y
+        x, H, W = self.patch_embed(x)
         bs, n, dim = x.shape
         # class token for vit
         cls = self.cls_token.expand(bs, -1, -1)

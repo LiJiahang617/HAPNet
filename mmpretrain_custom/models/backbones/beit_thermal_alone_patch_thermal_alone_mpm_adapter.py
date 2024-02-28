@@ -363,7 +363,7 @@ class MSDeformAttn(nn.Module):
 
 
 @MODELS.register_module()
-class BEiTAdapter_thermal_patch_alone(BEiT):
+class BEiTAdapter_patch_thermal_alone_mpm_thermal_alone(BEiT):
     arch_settings = {
         'atto': {
             'depths': [2, 2, 6, 2],
@@ -439,7 +439,7 @@ class BEiTAdapter_thermal_patch_alone(BEiT):
                                     out_channels=out_channels)
         """
         self.x_modality_encoder = MODELS.build(x_modality_encoder_)
-        print('Note, this is ablation study for adapter-thermal_patch-embed alone_rgb_thermal_mpm!!!')
+        print('Note, this is ablation study for adapter-thermal_alone_patch_thermal_alone_mpm!!!')
         self.interactions = nn.Sequential(*[
             InteractionBlockWithCls(dim=embed_dim, num_heads=deform_num_heads, n_points=n_points,
                              init_values=init_values, drop_path=self.drop_path_rate,
@@ -501,18 +501,18 @@ class BEiTAdapter_thermal_patch_alone(BEiT):
         c4 = c4 + self.level_embed[2]
         return c2, c3, c4
 
-    def forward(self, x):
+    def forward(self, inputs):
+        # fetch inputs and split it to 2 modalities: rgb:x
+        _, y = torch.split(inputs, (3, 3), dim=1)
         # rgbx_modality_encoder forward
-        c1, c2, c3, c4 = self.x_modality_encoder(x)
+        c1, c2, c3, c4 = self.x_modality_encoder(torch.cat((y,y), dim=1))
         # keep feature channels same
         c1 = self.fc1(c1)
         c2 = self.fc2(c2)
         c3 = self.fc3(c3)
         c4 = self.fc4(c4)
 
-        # fetch inputs and split it to 2 modalities: rgb:x
-        x, y = torch.split(x, (3, 3), dim=1)
-        deform_inputs1, deform_inputs2 = deform_inputs(x)
+        deform_inputs1, deform_inputs2 = deform_inputs(y)
         # fetch bs and emb_dim
         bs, dim, _, _ = c1.shape
         # flatten c2,3,4 to tokens
@@ -524,25 +524,23 @@ class BEiTAdapter_thermal_patch_alone(BEiT):
         c = torch.cat([c2, c3, c4], dim=1)
 
         # Patch Embedding forward
-        # x, H, W = self.patch_embed(x)
-        x, H, W = self.patch_embed(y)
-        # x = x + y
-        bs, n, dim = x.shape
+        y, H, W = self.patch_embed(y)
+        bs, n, dim = y.shape
         # class token for vit
         cls = self.cls_token.expand(bs, -1, -1)
         if self.pos_embed is not None:
             pos_embed = self._get_pos_embed(self.pos_embed, H, W)
-            x = x + pos_embed
-        x = self.pos_drop(x)
+            y = y + pos_embed
+        y = self.pos_drop(y)
 
         # Interaction
         outs = list()
         for i, layer in enumerate(self.interactions):
             indexes = self.interaction_indexes[i]
-            x, c, cls = layer(x, c, cls, self.blocks[indexes[0]:indexes[-1] + 1],
+            y, c, cls = layer(y, c, cls, self.blocks[indexes[0]:indexes[-1] + 1],
                               deform_inputs1, deform_inputs2, H, W)
             # need different context level features for segmentation
-            outs.append(x.transpose(1, 2).view(bs, dim, H, W).contiguous())
+            outs.append(y.transpose(1, 2).view(bs, dim, H, W).contiguous())
 
         # Split & Reshape
         c2 = c[:, 0:c2.size(1), :]
@@ -555,11 +553,11 @@ class BEiTAdapter_thermal_patch_alone(BEiT):
         c1 = self.up(c2) + c1
 
         if self.add_vit_feature:
-            x1, x2, x3, x4 = outs
-            x1 = F.interpolate(x1, scale_factor=4, mode='bilinear', align_corners=False)
-            x2 = F.interpolate(x2, scale_factor=2, mode='bilinear', align_corners=False)
-            x4 = F.interpolate(x4, scale_factor=0.5, mode='bilinear', align_corners=False)
-            c1, c2, c3, c4 = c1 + x1, c2 + x2, c3 + x3, c4 + x4
+            y1, y2, y3, y4 = outs
+            y1 = F.interpolate(y1, scale_factor=4, mode='bilinear', align_corners=False)
+            y2 = F.interpolate(y2, scale_factor=2, mode='bilinear', align_corners=False)
+            y4 = F.interpolate(y4, scale_factor=0.5, mode='bilinear', align_corners=False)
+            c1, c2, c3, c4 = c1 + y1, c2 + y2, c3 + y3, c4 + y4
 
         # Final Norm
         f1 = self.norm1(c1)

@@ -26,6 +26,14 @@ from .beit_sum_adapter_rgbt_conv_patch import BEiTAdapter_rgbt_conv_patch
 from .beit_sum_adapter_concat_share_patch import BEiTAdapter_concat_share_patch
 from .beit_ablation_cat_share import BEiT_cat_share
 from .beit_sum_adapter_sum_share_patch import BEiTAdapter_sum_share_patch
+from .double_convnext_adapter import DoubleConvNeXtAdapter
+from .beit_rgb_alone_mpm_adapter import BEiTAdapter_patch_rgb_alone_mpm_rgb_alone
+from .beit_thermal_alone_mpm_adapter import BEiTAdapter_patch_rgb_alone_mpm_thermal_alone
+from .beit_thermal_alone_patch_rgb_alone_mpm_adapter import BEiTAdapter_patch_thermal_alone_mpm_rgb_alone
+from .beit_thermal_alone_patch_thermal_alone_mpm_adapter import BEiTAdapter_patch_thermal_alone_mpm_thermal_alone
+from .beit_rgb_thermal_patch_rgb_alone_mpm_adapter import BEiTAdapter_patch_rgb_thermal_mpm_rgb_alone
+from .beit_rgb_thermal_patch_rgb_thermal_mpm_adapter import BEiTAdapter_patch_rgb_thermal_mpm_rgb_thermal
+from .beit_rgb_thermal_patch_thermal_alone_mpm_adapter import BEiTAdapter_patch_rgb_thermal_mpm_thermal_alone
 
 __all__ = [
     'ConvNeXt', 'ShareConvNeXt', 'ConvNeXtCatAdapter',
@@ -37,6 +45,10 @@ __all__ = [
     # for ablation study of ECCV 2024
     'BEiT_ablation', 'BEiTAdapter_sep_patch', 'BEiTAdapter_share_patch',
     'BEiTAdapter_thermal_patch_alone', 'BEiTAdapter_rgbt_conv_patch',
-    'BEiTAdapter_concat_share_patch', 'BEiT_cat_share', 'BEiTAdapter_sum_share_patch'
+    'BEiTAdapter_concat_share_patch', 'BEiT_cat_share', 'BEiTAdapter_sum_share_patch',
+    'DoubleConvNeXtAdapter', 'BEiTAdapter_patch_rgb_alone_mpm_rgb_alone', 'BEiTAdapter_patch_rgb_alone_mpm_thermal_alone',
+    'BEiTAdapter_patch_thermal_alone_mpm_rgb_alone', 'BEiTAdapter_patch_thermal_alone_mpm_thermal_alone',
+    'BEiTAdapter_patch_rgb_thermal_mpm_rgb_alone', 'BEiTAdapter_patch_rgb_thermal_mpm_rgb_thermal',
+    'BEiTAdapter_patch_rgb_thermal_mpm_thermal_alone'
 
 ]
