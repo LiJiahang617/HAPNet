@@ -108,7 +108,6 @@ test_dataloader = dict(
 val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU', 'mFscore'])
 test_evaluator = val_evaluator
 
-convnext_pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-small_3rdparty_32xb128-noema_in1k_20220301-303e75e3.pth'
 beit_pretrained = '/home/ljh/Desktop/TIV/TIV/pretrained/beitv2_base_patch16_224_pt1k_ft21k.pth'
 
 
@@ -130,7 +129,7 @@ model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
     backbone=dict(
-        type='mmpretrain_custom.BEiTAdapter_patch_rgb_thermal_mpm_thermal_alone',
+        type='mmpretrain_custom.TwinBeiTCat',
         pretrained=beit_pretrained,
         img_size=480,
         patch_size=16,
@@ -148,22 +147,10 @@ model = dict(
         cffn_ratio=0.25,
         deform_ratio=0.5,
         with_cp=True,  # set with_cp=True to save memory
-        interaction_indexes=[[0, 2], [3, 5], [6, 8], [9, 11]],
-        # this param is to link with x_modality_encoder
-        arch='small',
-        x_modality_encoder=dict(
-            type='mmpretrain_custom.ShareSumConvNeXt',
-            arch='small',
-            out_indices=[0, 1, 2, 3],
-            drop_path_rate=0.3,
-            layer_scale_init_value=1.0,
-            gap_before_final_norm=False,
-            init_cfg=dict(
-                type='Pretrained', checkpoint=convnext_pretrained,
-                prefix='backbone.'))),
+        interaction_indexes=[[0, 2], [3, 5], [6, 8], [9, 11]]),
     decode_head=dict(
         type='Mask2FormerHead',
-        in_channels=[768, 768, 768, 768],  # modified here
+        in_channels=[1536, 1536, 1536, 1536],  # modified here
         strides=[4, 8, 16, 32],
         feat_channels=256,
         out_channels=256,
@@ -316,7 +303,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                dict(type='WandbVisBackend', init_kwargs=dict(project="HeFFT_ablation_MFNet", name="adapter-b_convnext-s_rgb_thermal_patch_thermal_alone_mpm_no_aux")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="HeFFT_ablation_MFNet", name="twin_beit_cat_no_aux")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')

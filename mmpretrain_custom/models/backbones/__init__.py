@@ -34,6 +34,9 @@ from .beit_thermal_alone_patch_thermal_alone_mpm_adapter import BEiTAdapter_patc
 from .beit_rgb_thermal_patch_rgb_alone_mpm_adapter import BEiTAdapter_patch_rgb_thermal_mpm_rgb_alone
 from .beit_rgb_thermal_patch_rgb_thermal_mpm_adapter import BEiTAdapter_patch_rgb_thermal_mpm_rgb_thermal
 from .beit_rgb_thermal_patch_thermal_alone_mpm_adapter import BEiTAdapter_patch_rgb_thermal_mpm_thermal_alone
+from .dual_beit import DualBEiT
+from .twin_beit_sum import TwinBeiTSum
+from .twin_beit_concat import TwinBeiTCat
 
 __all__ = [
     'ConvNeXt', 'ShareConvNeXt', 'ConvNeXtCatAdapter',
@@ -49,6 +52,6 @@ __all__ = [
     'DoubleConvNeXtAdapter', 'BEiTAdapter_patch_rgb_alone_mpm_rgb_alone', 'BEiTAdapter_patch_rgb_alone_mpm_thermal_alone',
     'BEiTAdapter_patch_thermal_alone_mpm_rgb_alone', 'BEiTAdapter_patch_thermal_alone_mpm_thermal_alone',
     'BEiTAdapter_patch_rgb_thermal_mpm_rgb_alone', 'BEiTAdapter_patch_rgb_thermal_mpm_rgb_thermal',
-    'BEiTAdapter_patch_rgb_thermal_mpm_thermal_alone'
+    'BEiTAdapter_patch_rgb_thermal_mpm_thermal_alone', 'DualBEiT', 'TwinBeiTSum', 'TwinBeiTCat'
 
 ]

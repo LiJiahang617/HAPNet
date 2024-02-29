@@ -1,19 +1,19 @@
 # dataset settings
 dataset_type = 'MMMFDataset'
 data_root = '/media/ljh/Kobe24/MF_RGBT'
-
-# vit-adapter needs square, so crop must has h==w
-crop_size = (480, 480) # h, w
-img_size = (480, 640) # h, w
+sample_scale = (640, 480)
 
 train_pipeline = [
     # modality value must be modified
     dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(type='LoadAnnotations', reduce_zero_label=False),
-    dict(type='RandomResize', scale=(640, 480),
-         ratio_range=(0.5, 2.0), keep_ratio=True),  # Note: w, h instead of h, w
-    dict(type='RandomCrop', crop_size=crop_size, cat_max_ratio=0.75),
+    dict(
+        type='RandomChoiceResize',
+        scales=[int(640 * x * 0.1) for x in range(5, 20)],
+        resize_type='ResizeShortestEdge',
+        max_size=1280),  # Note: w, h instead of h, w
+    dict(type='RandomCrop', crop_size=(480, 640), cat_max_ratio=0.75),
     dict(type='RandomFlip', prob=0.5),
     dict(type='PackSegInputs')
 ]
@@ -23,7 +23,7 @@ val_pipeline = [
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(
         type='Resize',
-        scale=(640, 480), keep_ratio=True),  # Note: w, h instead of h, w
+        scale=sample_scale, keep_ratio=True),  # Note: w, h instead of h, w
     # add loading annotation after ``Resize`` because ground truth
     # does not need to do resize data transform
     dict(type='LoadAnnotations', reduce_zero_label=False),
@@ -33,29 +33,10 @@ test_pipeline = [
     # modality value must be modified
     dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
-    dict(type='Resize', scale=(640, 480), keep_ratio=True),
+    dict(type='Resize', scale=sample_scale, keep_ratio=True),
     dict(type='LoadAnnotations', reduce_zero_label=False),
     dict(type='PackSegInputs')
 ]
-# tta settings: Note: val will not use this strategy
-img_ratios = [1.0, 1.25, 1.5]  # 多尺度预测缩放比例
-tta_pipeline = [  # 多尺度测试
-    dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
-    dict(type='StackByChannel', keys=('img', 'ano')),
-    dict(
-        type='TestTimeAug',
-        transforms=[
-            [
-                dict(type='Resize', scale_factor=r, keep_ratio=True)
-                for r in img_ratios
-            ],
-            [
-                dict(type='RandomFlip', prob=0., direction='horizontal'),
-                dict(type='RandomFlip', prob=1., direction='horizontal')
-            ], [dict(type='LoadAnnotations')], [dict(type='PackSegInputs')]
-        ])
-]
-
 train_dataloader = dict(
     batch_size=6,
     num_workers=16,
@@ -108,51 +89,27 @@ test_dataloader = dict(
 val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU', 'mFscore'])
 test_evaluator = val_evaluator
 
+
+
+
 convnext_pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-small_3rdparty_32xb128-noema_in1k_20220301-303e75e3.pth'
-beit_pretrained = '/home/ljh/Desktop/TIV/TIV/pretrained/beitv2_base_patch16_224_pt1k_ft21k.pth'
 
-
+crop_size = (480, 640) # h, w
 data_preprocessor = dict(
     type='SegDataPreProcessor',
-    mean=[0, 0, 0, 0, 0, 0], # depth images in NYU has 3 channels
-    std=[1, 1, 1, 1, 1, 1],
+    mean=[0.485, 0.456, 0.406, 0, 0, 0], # depth images in NYU has 3 channels
+    std=[0.229, 0.224, 0.225, 1, 1, 1],
     bgr_to_rgb=True,
     pad_val=0,
     seg_pad_val=255,
-    size=crop_size,
-    # if you want to use tta, then you should give test_cfg or test data won't be padding, and cause errors!
-    # test_cfg=dict(size=crop_size)
-    )
+    size=crop_size)
 num_classes = 9
 
-# model setting
 model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
     backbone=dict(
-        type='mmpretrain_custom.BEiTAdapter_patch_rgb_thermal_mpm_thermal_alone',
-        pretrained=beit_pretrained,
-        img_size=480,
-        patch_size=16,
-        embed_dim=768,
-        depth=12,
-        num_heads=12,
-        mlp_ratio=4,
-        qkv_bias=True,
-        use_abs_pos_emb=False,
-        use_rel_pos_bias=True,
-        init_values=1e-6,
-        drop_path_rate=0.2,
-        n_points=4,
-        deform_num_heads=12,
-        cffn_ratio=0.25,
-        deform_ratio=0.5,
-        with_cp=True,  # set with_cp=True to save memory
-        interaction_indexes=[[0, 2], [3, 5], [6, 8], [9, 11]],
-        # this param is to link with x_modality_encoder
-        arch='small',
-        x_modality_encoder=dict(
-            type='mmpretrain_custom.ShareSumConvNeXt',
+            type='mmpretrain_custom.SumTwinConvNeXt',
             arch='small',
             out_indices=[0, 1, 2, 3],
             drop_path_rate=0.3,
@@ -160,10 +117,10 @@ model = dict(
             gap_before_final_norm=False,
             init_cfg=dict(
                 type='Pretrained', checkpoint=convnext_pretrained,
-                prefix='backbone.'))),
+                prefix='backbone.')),
     decode_head=dict(
         type='Mask2FormerHead',
-        in_channels=[768, 768, 768, 768],  # modified here
+        in_channels=[96, 192, 384, 768],  # modified here
         strides=[4, 8, 16, 32],
         feat_channels=256,
         out_channels=256,
@@ -268,7 +225,7 @@ model = dict(
                 ]),
             sampler=dict(type='mmdet_custom.MaskPseudoSampler'))),
     train_cfg=dict(),
-    test_cfg=dict(mode='slide', crop_size=crop_size, stride=(320, 320))) #h,w
+    test_cfg=dict(mode='whole'))
 
 # optimizer
 optimizer = dict(
@@ -276,8 +233,6 @@ optimizer = dict(
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
-    constructor='LayerDecayOptimizerConstructor',
-    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.95, x_encoder_num_layers=12),
     clip_grad=dict(max_norm=5.0))
 
 # learning policy
@@ -316,7 +271,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                dict(type='WandbVisBackend', init_kwargs=dict(project="HeFFT_ablation_MFNet", name="adapter-b_convnext-s_rgb_thermal_patch_thermal_alone_mpm_no_aux")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="HeFFT_ablation_MFNet", name="twin_convnext-s_sum_no_aux")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
@@ -326,3 +281,4 @@ load_from = None
 resume = False
 
 tta_model = dict(type='SegTTAModel')
+
