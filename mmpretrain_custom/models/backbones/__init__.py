@@ -40,6 +40,7 @@ from .twin_beit_concat import TwinBeiTCat
 from .hefft_remove_crg import BEiTAdapter_remove_crg
 from .hefft_remove_cpa_crg import BEiTAdapter_remove_cpa_crg
 from .hefft_remove_cpa import BEiTAdapter_remove_cpa
+from .beit_sharesum_resnet_adapter import BEiTAdapter_sharesum_resnet
 
 __all__ = [
     'ConvNeXt', 'ShareConvNeXt', 'ConvNeXtCatAdapter',
@@ -56,6 +57,6 @@ __all__ = [
     'BEiTAdapter_patch_thermal_alone_mpm_rgb_alone', 'BEiTAdapter_patch_thermal_alone_mpm_thermal_alone',
     'BEiTAdapter_patch_rgb_thermal_mpm_rgb_alone', 'BEiTAdapter_patch_rgb_thermal_mpm_rgb_thermal',
     'BEiTAdapter_patch_rgb_thermal_mpm_thermal_alone', 'DualBEiT', 'TwinBeiTSum', 'TwinBeiTCat', 'BEiTAdapter_remove_crg',
-    'BEiTAdapter_remove_cpa_crg', 'BEiTAdapter_remove_cpa'
+    'BEiTAdapter_remove_cpa_crg', 'BEiTAdapter_remove_cpa', 'BEiTAdapter_sharesum_resnet'
 
 ]
