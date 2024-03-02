@@ -1,17 +1,17 @@
 # dataset settings
-dataset_type = 'MMMFDataset'
-data_root = '/media/ljh/Kobe24/MF_RGBT_enhance'
+dataset_type = 'MMKPDataset'
+data_root = '/media/ljh/Kobe24/KPdataset1'
 
 # vit-adapter needs square, so crop must has h==w
-crop_size = (480, 480) # h, w
-img_size = (480, 640) # h, w
+crop_size = (512, 512) # h, w
+img_size = (512, 640) # h, w
 
 train_pipeline = [
     # modality value must be modified
     dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
-    dict(type='LoadAnnotations', reduce_zero_label=False),
-    dict(type='RandomResize', scale=(640, 480),
+    dict(type='LoadKPAnnotations', reduce_zero_label=False),
+    dict(type='RandomResize', scale=(640, 512),
          ratio_range=(0.5, 2.0), keep_ratio=True),  # Note: w, h instead of h, w
     dict(type='RandomCrop', crop_size=crop_size, cat_max_ratio=0.75),
     dict(type='RandomFlip', prob=0.5),
@@ -23,18 +23,18 @@ val_pipeline = [
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(
         type='Resize',
-        scale=(640, 480), keep_ratio=True),  # Note: w, h instead of h, w
+        scale=(640, 512), keep_ratio=True),  # Note: w, h instead of h, w
     # add loading annotation after ``Resize`` because ground truth
     # does not need to do resize data transform
-    dict(type='LoadAnnotations', reduce_zero_label=False),
+    dict(type='LoadKPAnnotations', reduce_zero_label=False),
     dict(type='PackSegInputs')
 ]
 test_pipeline = [
     # modality value must be modified
     dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
-    dict(type='Resize', scale=(640, 480), keep_ratio=True),
-    dict(type='LoadAnnotations', reduce_zero_label=False),
+    dict(type='Resize', scale=(640, 512), keep_ratio=True),
+    dict(type='LoadKPAnnotations', reduce_zero_label=False),
     dict(type='PackSegInputs')
 ]
 # tta settings: Note: val will not use this strategy
@@ -52,12 +52,12 @@ tta_pipeline = [  # 多尺度测试
             [
                 dict(type='RandomFlip', prob=0., direction='horizontal'),
                 dict(type='RandomFlip', prob=1., direction='horizontal')
-            ], [dict(type='LoadAnnotations')], [dict(type='PackSegInputs')]
+            ], [dict(type='LoadKPAnnotations')], [dict(type='PackSegInputs')]
         ])
 ]
 
 train_dataloader = dict(
-    batch_size=7,
+    batch_size=5,
     num_workers=16,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -123,7 +123,7 @@ data_preprocessor = dict(
     # if you want to use tta, then you should give test_cfg or test data won't be padding, and cause errors!
     # test_cfg=dict(size=crop_size)
     )
-num_classes = 9
+num_classes = 19
 
 # model setting
 model = dict(
@@ -132,7 +132,7 @@ model = dict(
     backbone=dict(
         type='mmpretrain_custom.BEiTAdapter_rgbxsum',
         pretrained=beit_pretrained,
-        img_size=480,
+        img_size=512,
         patch_size=16,
         embed_dim=768,
         depth=12,
@@ -267,18 +267,30 @@ model = dict(
                         eps=1.0)
                 ]),
             sampler=dict(type='mmdet_custom.MaskPseudoSampler'))),
+    auxiliary_head=dict(
+        type='FCNHead',
+        in_channels=768,
+        in_index=0,
+        channels=256,
+        num_convs=1,
+        concat_input=False,
+        dropout_ratio=0.1,
+        num_classes=num_classes,
+        norm_cfg=dict(type='SyncBN', requires_grad=True),
+        align_corners=False,
+        loss_decode=dict(
+            type='CrossEntropyLoss', use_sigmoid=False, loss_weight=0.4)),
     train_cfg=dict(),
     test_cfg=dict(mode='slide', crop_size=crop_size, stride=(320, 320))) #h,w
 
 # optimizer
 optimizer = dict(
-    type='AdamW', lr=0.0001, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
+    type='AdamW', lr=0.0002, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
     constructor='LayerDecayOptimizerConstructor',
-    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.95, x_encoder_num_layers=12),
-    clip_grad=dict(max_norm=5.0))
+    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.9, x_encoder_num_layers=12))
 
 # learning policy
 param_scheduler = [
@@ -316,10 +328,10 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet", name="beit-adapter-b_share_sum_convnext-s_enhance_data_layer_decay_constructor")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="RTFormer-KP", name="beit-b_share_sum_convnext-s_ld_090_lr2e-4_aux_fcn")),
 ]
 visualizer = dict(
-    type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer', alpha=1)
+    type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer', alpha=1.0)
 log_processor = dict(window_size=10, by_epoch=True, custom_cfg=None, num_digits=4)
 log_level = 'INFO'
 load_from = None

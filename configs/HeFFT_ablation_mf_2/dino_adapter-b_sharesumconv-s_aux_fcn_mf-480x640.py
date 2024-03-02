@@ -1,6 +1,6 @@
 # dataset settings
 dataset_type = 'MMMFDataset'
-data_root = '/media/ljh/Kobe24/MF_RGBT_enhance'
+data_root = '/media/ljh/Kobe24/MF_RGBT'
 
 # vit-adapter needs square, so crop must has h==w
 crop_size = (480, 480) # h, w
@@ -57,7 +57,7 @@ tta_pipeline = [  # 多尺度测试
 ]
 
 train_dataloader = dict(
-    batch_size=7,
+    batch_size=6,
     num_workers=16,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -109,7 +109,7 @@ val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU', 'mFscore'])
 test_evaluator = val_evaluator
 
 convnext_pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-small_3rdparty_32xb128-noema_in1k_20220301-303e75e3.pth'
-beit_pretrained = '/home/ljh/Desktop/TIV/TIV/pretrained/beitv2_base_patch16_224_pt1k_ft21k.pth'
+dino_pretrained = '/home/ljh/Desktop/TIV/TIV/pretrained/dinov2_vitb14_pretrain_14to16.pth'
 
 
 data_preprocessor = dict(
@@ -131,7 +131,8 @@ model = dict(
     data_preprocessor=data_preprocessor,
     backbone=dict(
         type='mmpretrain_custom.BEiTAdapter_rgbxsum',
-        pretrained=beit_pretrained,
+        pretrain_size=480,
+        pretrained=dino_pretrained,
         img_size=480,
         patch_size=16,
         embed_dim=768,
@@ -142,7 +143,7 @@ model = dict(
         use_abs_pos_emb=False,
         use_rel_pos_bias=True,
         init_values=1e-6,
-        drop_path_rate=0.2,
+        drop_path_rate=0.3,
         n_points=4,
         deform_num_heads=12,
         cffn_ratio=0.25,
@@ -272,13 +273,12 @@ model = dict(
 
 # optimizer
 optimizer = dict(
-    type='AdamW', lr=0.0001, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
+    type='AdamW', lr=0.0002, weight_decay=0.05, betas=(0.9, 0.999))
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
     constructor='LayerDecayOptimizerConstructor',
-    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.95, x_encoder_num_layers=12),
-    clip_grad=dict(max_norm=5.0))
+    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.80, x_encoder_num_layers=12))
 
 # learning policy
 param_scheduler = [
@@ -306,7 +306,7 @@ default_hooks = dict(
         type='CheckpointHook', by_epoch=True, interval=100,
         save_best='mIoU'),
     sampler_seed=dict(type='DistSamplerSeedHook'),
-    visualization=dict(type='SegVisualizationHook', interval=1, draw=True))
+    visualization=dict(type='SegVisualizationHook', interval=1, draw=False))
 
 # Runtime configs
 default_scope = 'mmseg_custom'
@@ -316,10 +316,10 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-MFNet", name="beit-adapter-b_share_sum_convnext-s_enhance_data_layer_decay_constructor")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="HeFFT_ablation_MFNet", name="dino_adapter-b_aux_fcn_ld_080_lr2e-4_epo200")),
 ]
 visualizer = dict(
-    type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer', alpha=1)
+    type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
 log_processor = dict(window_size=10, by_epoch=True, custom_cfg=None, num_digits=4)
 log_level = 'INFO'
 load_from = None
