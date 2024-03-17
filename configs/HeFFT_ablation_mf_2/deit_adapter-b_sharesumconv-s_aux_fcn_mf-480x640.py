@@ -109,7 +109,7 @@ val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU', 'mFscore'])
 test_evaluator = val_evaluator
 
 convnext_pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-small_3rdparty_32xb128-noema_in1k_20220301-303e75e3.pth'
-dino_pretrained = '/home/ljh/Desktop/TIV/TIV/pretrained/dinov2_vitb14_pretrain_14to16.pth'
+deit_pretrained = 'pretrained/deit_base_patch16_224-b5f2ef4d.pth'
 
 
 data_preprocessor = dict(
@@ -132,7 +132,7 @@ model = dict(
     backbone=dict(
         type='mmpretrain_custom.BEiTAdapter_rgbxsum',
         pretrain_size=480,
-        pretrained=dino_pretrained,
+        pretrained=deit_pretrained,
         img_size=480,
         patch_size=16,
         embed_dim=768,
@@ -268,19 +268,6 @@ model = dict(
                         eps=1.0)
                 ]),
             sampler=dict(type='mmdet_custom.MaskPseudoSampler'))),
-    auxiliary_head=dict(
-        type='FCNHead',
-        in_channels=768,
-        in_index=0,
-        channels=256,
-        num_convs=1,
-        concat_input=False,
-        dropout_ratio=0.1,
-        num_classes=num_classes,
-        norm_cfg=dict(type='SyncBN', requires_grad=True),
-        align_corners=False,
-        loss_decode=dict(
-            type='CrossEntropyLoss', use_sigmoid=False, loss_weight=0.4)),
     train_cfg=dict(),
     test_cfg=dict(mode='slide', crop_size=crop_size, stride=(320, 320))) #h,w
 
@@ -291,7 +278,7 @@ optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
     constructor='LayerDecayOptimizerConstructor',
-    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.80, x_encoder_num_layers=12))
+    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.90, x_encoder_num_layers=12))
 
 # learning policy
 param_scheduler = [
@@ -302,13 +289,13 @@ param_scheduler = [
         eta_min=0,
         power=0.9,
         begin=0,
-        end=200,
+        end=100,
         by_epoch=True)
 ]
 
 # training schedule for 160k
 train_cfg = dict(
-    type='EpochBasedTrainLoop', max_epochs=200, val_begin=1, val_interval=1)
+    type='EpochBasedTrainLoop', max_epochs=100, val_begin=1, val_interval=1)
 val_cfg = dict(type='ValLoop')
 test_cfg = dict(type='TestLoop')
 default_hooks = dict(
@@ -329,7 +316,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="HeFFT_ablation_MFNet", name="dino_adapter-b_aux_fcn_ld_080_lr2e-4_epo200")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="HeFFT_ablation_MFNet", name="deit_adapter-b_ld_080_lr2e-4_epo100")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')

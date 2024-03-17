@@ -1,6 +1,6 @@
 # dataset settings
 dataset_type = 'MMMFDataset'
-data_root = '/media/ljh/Kobe24/MF_RGBT'
+data_root = '/media/ljh/Kobe24/MF_RGBT_enhance'
 
 # vit-adapter needs square, so crop must has h==w
 crop_size = (480, 480) # h, w
@@ -329,7 +329,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="HeFFT_ablation_MFNet", name="dino_adapter-b_aux_fcn_ld_080_lr2e-4_epo200")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="HeFFT_ablation_MFNet", name="dino_adapter-b_ld_080_lr2e-4_epo200")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')
