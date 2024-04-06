@@ -15,6 +15,8 @@ train_pipeline = [
          ratio_range=(0.5, 2.0), keep_ratio=True),  # Note: w, h instead of h, w
     dict(type='RandomCrop', crop_size=crop_size, cat_max_ratio=0.75),
     dict(type='RandomFlip', prob=0.5),
+    # add only for test this aug fuc.
+    # dict(type='MultiModalPhotoMetricDistortion'),
     dict(type='PackSegInputs')
 ]
 val_pipeline = [

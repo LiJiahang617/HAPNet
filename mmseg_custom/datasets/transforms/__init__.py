@@ -9,7 +9,7 @@ from .loading import (LoadAnnotations, LoadBiomedicalAnnotation, LoadCarlaAnnota
 from .transforms import (CLAHE, AdjustGamma, BioMedical3DPad,
                          BioMedical3DRandomCrop, BioMedical3DRandomFlip,
                          BioMedicalGaussianBlur, BioMedicalGaussianNoise,
-                         BioMedicalRandomGamma, GenerateEdge,
+                         BioMedicalRandomGamma, GenerateEdge, MultiModalPhotoMetricDistortion,
                          PhotoMetricDistortion, RandomCrop, RandomCutOut,
                          RandomMosaic, RandomRotate, RandomRotFlip, Rerange,
                          ResizeShortestEdge, ResizeToMultiple, RGB2Gray,
@@ -25,5 +25,5 @@ __all__ = [
     'ResizeShortestEdge', 'BioMedicalGaussianNoise', 'BioMedicalGaussianBlur',
     'BioMedical3DRandomFlip', 'BioMedicalRandomGamma', 'BioMedical3DPad', 'LoadNYUAnnotations',
     'RandomRotFlip', 'LoadKittiAnnotations', 'LoadOrfdAnnotations', 'LoadCityscapesAnnotations',
-    'LoadKPAnnotations'
+    'LoadKPAnnotations', 'MultiModalPhotoMetricDistortion'
 ]
