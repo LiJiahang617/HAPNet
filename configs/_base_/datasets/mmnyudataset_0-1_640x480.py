@@ -5,7 +5,7 @@ sample_scale = (640, 480)
 
 train_pipeline = [
     # modality value must be modified
-    dict(type='LoadNYUImageFromFile', to_float32=True, modality='HHA'),
+    dict(type='LoadNYUImageFromFile', to_float32=True, modality='depth'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(type='LoadNYUAnnotations', reduce_zero_label=True),
     dict(
@@ -19,7 +19,7 @@ train_pipeline = [
 ]
 val_pipeline = [
     # modality value must be modified
-    dict(type='LoadNYUImageFromFile', to_float32=True, modality='HHA'),
+    dict(type='LoadNYUImageFromFile', to_float32=True, modality='depth'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(
         type='Resize',
@@ -31,7 +31,7 @@ val_pipeline = [
 ]
 test_pipeline = [
     # modality value must be modified
-    dict(type='LoadNYUImageFromFile', to_float32=True, modality='HHA'),
+    dict(type='LoadNYUImageFromFile', to_float32=True, modality='depth'),
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(type='Resize', scale=sample_scale, keep_ratio=True),
     dict(type='LoadNYUAnnotations', reduce_zero_label=True),
@@ -47,8 +47,8 @@ train_dataloader = dict(
         data_root=data_root,
         reduce_zero_label=True,
         # have to modify next 2 properties at the same time
-        modality='HHA',
-        ano_suffix='.jpg',
+        modality='depth',
+        ano_suffix='.png',
         data_prefix=dict(
             img_path='images/train',
             depth_path='depth/train',
@@ -65,8 +65,8 @@ val_dataloader = dict(
         data_root=data_root,
         reduce_zero_label=True,
         # have to modify next 2 properties at the same time
-        modality='HHA',
-        ano_suffix='.jpg',
+        modality='depth',
+        ano_suffix='.png',
         data_prefix=dict(
             img_path='images/test',
             depth_path='depth/test',
@@ -83,8 +83,8 @@ test_dataloader = dict(
         data_root=data_root,
         reduce_zero_label=True,
         # have to modify next 2 properties at the same time
-        modality='HHA',
-        ano_suffix='.jpg',
+        modality='depth',
+        ano_suffix='.png',
         data_prefix=dict(
             img_path='images/test',
             depth_path='depth/test',

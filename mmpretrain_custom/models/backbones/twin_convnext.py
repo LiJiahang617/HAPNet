@@ -267,7 +267,7 @@ class TwinConvNeXt(BaseBackbone):
             f'The "depths" ({self.depths}) and "channels" ({self.channels}) ' \
             'should be both sequence with the same length.'
 
-        print('Note, this is ablation study for adapter-twin_convnext-s_concat!!!')
+        # print('Note, this is ablation study for adapter-twin_convnext-s_concat!!!')
 
         self.num_stages = len(self.depths)
 

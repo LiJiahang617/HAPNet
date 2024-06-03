@@ -270,6 +270,14 @@ class RoadFormerHead(MaskFormerHead):
          avg_factor) = self.get_targets(cls_scores_list, mask_preds_list,
                                         batch_gt_instances, batch_img_metas)
         # shape (batch_size, num_queries)
+        """
+        这里label_list里面有batch_size个tensor，每个tensor长度为num_queries,其中装的值都为num_classes(而不是num_classes - 1),
+        多的这个是为了set_based prediction特有的``ignore``类别，stack后就变成了(batch_size, num_queries), flatten后变为bs*n_q,
+        就可以和cls_scores进行loss计算了，本质上这块做了将gt填充为等于bs*n_q的数量，然后做loss，全部用额外的那个label，也就是num_classes
+        作为索引来算cls_loss. 需要注意的是，在语义分割任务时，gt被处理为每个类别只认为是1个instance，也就是一个sample(image)只有
+        len(np.unique(gt))个gt_instance.
+        """
+
         labels = torch.stack(labels_list, dim=0)
         # shape (batch_size, num_queries)
         label_weights = torch.stack(label_weights_list, dim=0)
