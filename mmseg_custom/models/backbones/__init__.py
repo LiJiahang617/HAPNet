@@ -14,10 +14,11 @@ from .share_sum_resnet import ShareSumResNet
 from .share_sum_resnet import ShareSumResNetV1c
 from .share_sum_resnet import ShareSumResNetV1d
 from .share_sum_swin import ShareSumSwinTransformer
+from .cmnext import CMNeXt
 
 __all__ = [
     'SwinTransformer', 'TwinSwinTransformer', 'TwinMixVisionTransformer',
     'TwinMSCAN', 'MixVisionTransformer', 'MSCAN', 'ShareSwinTransformer',
     'BEiTAdapter', 'FusionBEiTAdapter', 'ShareBEiTAdapter', 'TwinBEiTAdapter_sharespm', 'ShareSumResNet',
-    'ShareSumResNetV1c', 'ShareSumResNetV1d', 'ShareSumSwinTransformer'
+    'ShareSumResNetV1c', 'ShareSumResNetV1d', 'ShareSumSwinTransformer', 'CMNeXt'
 ]

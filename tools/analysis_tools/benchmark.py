@@ -20,12 +20,12 @@ def parse_args():
     parser.add_argument('config', help='test config file path')
     parser.add_argument('checkpoint', help='checkpoint file')
     parser.add_argument(
-        '--log-interval', type=int, default=50, help='interval of logging')
+        '--log-interval', type=int, default=20, help='interval of logging')
     parser.add_argument(
         '--work-dir',
         help=('if specified, the results will be dumped '
               'into the directory as json'))
-    parser.add_argument('--repeat-times', type=int, default=1)
+    parser.add_argument('--repeat-times', type=int, default=20)
     args = parser.parse_args()
     return args
 
@@ -34,7 +34,7 @@ def main():
     args = parse_args()
     cfg = Config.fromfile(args.config)
 
-    init_default_scope(cfg.get('default_scope', 'mmseg'))
+    init_default_scope(cfg.get('default_scope', 'mmseg_custom'))
 
     timestamp = time.strftime('%Y%m%d_%H%M%S', time.localtime())
     if args.work_dir is not None:

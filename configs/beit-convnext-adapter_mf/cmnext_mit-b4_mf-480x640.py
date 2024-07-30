@@ -1,6 +1,6 @@
 # dataset settings
 dataset_type = 'MMMFDataset'
-data_root = '/media/ljh/Kobe24/MF_RGBT_enhance'
+data_root = '/media/ljh/Kobe24/MF_RGBT'
 
 # vit-adapter needs square, so crop must has h==w
 crop_size = (480, 480) # h, w
@@ -57,7 +57,7 @@ tta_pipeline = [  # 多尺度测试
 ]
 
 train_dataloader = dict(
-    batch_size=6,
+    batch_size=2,
     num_workers=16,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -109,7 +109,7 @@ val_evaluator = dict(type='IoUMetric', iou_metrics=['mIoU', 'mFscore'])
 test_evaluator = val_evaluator
 
 convnext_pretrained = 'https://download.openmmlab.com/mmclassification/v0/convnext/downstream/convnext-small_3rdparty_32xb128-noema_in1k_20220301-303e75e3.pth'
-beit_pretrained = '/home/ljh/Downloads/beitv2_base_patch16_224_pt1k_ft21k.pth'
+beit_pretrained = '/home/TIV/pretrained/beitv2_base_patch16_224_pt1k_ft21k.pth'
 
 
 data_preprocessor = dict(
@@ -130,40 +130,12 @@ model = dict(
     type='EncoderDecoder',
     data_preprocessor=data_preprocessor,
     backbone=dict(
-        type='mmpretrain_custom.BEiTAdapter_rgbxsum',
-        pretrained=beit_pretrained,
-        img_size=480,
-        patch_size=16,
-        embed_dim=768,
-        depth=12,
-        num_heads=12,
-        mlp_ratio=4,
-        qkv_bias=True,
-        use_abs_pos_emb=False,
-        use_rel_pos_bias=True,
-        init_values=1e-6,
-        drop_path_rate=0.2,
-        n_points=4,
-        deform_num_heads=12,
-        cffn_ratio=0.25,
-        deform_ratio=0.5,
-        with_cp=True,  # set with_cp=True to save memory
-        interaction_indexes=[[0, 2], [3, 5], [6, 8], [9, 11]],
-        # this param is to link with x_modality_encoder
-        arch='small',
-        x_modality_encoder=dict(
-            type='mmpretrain_custom.ShareSumConvNeXt',
-            arch='small',
-            out_indices=[0, 1, 2, 3],
-            drop_path_rate=0.3,
-            layer_scale_init_value=1.0,
-            gap_before_final_norm=False,
-            init_cfg=dict(
-                type='Pretrained', checkpoint=convnext_pretrained,
-                prefix='backbone.'))),
+        type='CMNeXt',
+        model_name='B4',
+        modals=['images', 'thermal']),
     decode_head=dict(
         type='Mask2FormerHead',
-        in_channels=[768, 768, 768, 768],  # modified here
+        in_channels=[64, 128, 320, 512],  # modified here
         strides=[4, 8, 16, 32],
         feat_channels=256,
         out_channels=256,
@@ -269,7 +241,7 @@ model = dict(
             sampler=dict(type='mmdet_custom.MaskPseudoSampler'))),
     auxiliary_head=dict(
         type='FCNHead',
-        in_channels=768,
+        in_channels=64,
         in_index=0,
         channels=256,
         num_convs=1,
@@ -279,18 +251,19 @@ model = dict(
         norm_cfg=dict(type='SyncBN', requires_grad=True),
         align_corners=False,
         loss_decode=dict(
-            type='CrossEntropyLoss', use_sigmoid=False, loss_weight=0.4)),
+            type='CrossEntropyLoss', use_sigmoid=False, loss_weight=0.4,
+            class_weight=[1.5105, 16.6591, 29.4238, 34.6315, 40.0845, 41.4357, 47.9794, 45.3725, 44.9000])),
     train_cfg=dict(),
     test_cfg=dict(mode='slide', crop_size=crop_size, stride=(320, 320))) #h,w
 
 # optimizer
 optimizer = dict(
-    type='AdamW', lr=0.0002, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
+    type='AdamW', lr=0.0001, weight_decay=0.05, eps=1e-8, betas=(0.9, 0.999))
 optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
     constructor='LayerDecayOptimizerConstructor',
-    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.8, x_encoder_num_layers=12),
+    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.9, x_encoder_num_layers=12),
     clip_grad=dict(max_norm=5.0))
 
 # learning policy
@@ -329,7 +302,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                # dict(type='WandbVisBackend', init_kwargs=dict(project="RTFormer-MFNet", name="beit-b_share_sum_convnext-s_ld_090_lr1e-4_w/o_weightloss")),
+                # dict(type='WandbVisBackend', init_kwargs=dict(project="RTFormer-MFNet", name="beit-b_share_sum_convnext-s_ld_090_lr1e-4_weightloss")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')

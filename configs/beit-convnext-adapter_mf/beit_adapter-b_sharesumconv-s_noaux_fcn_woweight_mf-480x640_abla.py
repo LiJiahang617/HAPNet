@@ -12,7 +12,7 @@ train_pipeline = [
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(type='LoadAnnotations', reduce_zero_label=False),
     dict(type='RandomResize', scale=(640, 480),
-         ratio_range=(0.5, 2.0), keep_ratio=True),  # Note: w, h instead of h, w
+         ratio_range=(0.5, 2.0), keep_ratio=False),  # Note: w, h instead of h, w
     dict(type='RandomCrop', crop_size=crop_size, cat_max_ratio=0.75),
     dict(type='RandomFlip', prob=0.5),
     dict(type='PackSegInputs')
@@ -23,7 +23,7 @@ val_pipeline = [
     dict(type='StackByChannel', keys=('img', 'ano')),
     dict(
         type='Resize',
-        scale=(640, 480), keep_ratio=True),  # Note: w, h instead of h, w
+        scale=(480, 480), keep_ratio=False),  # Note: w, h instead of h, w
     # add loading annotation after ``Resize`` because ground truth
     # does not need to do resize data transform
     dict(type='LoadAnnotations', reduce_zero_label=False),
@@ -33,7 +33,7 @@ test_pipeline = [
     # modality value must be modified
     dict(type='LoadMFImageFromFile', to_float32=True, modality='thermal'),
     dict(type='StackByChannel', keys=('img', 'ano')),
-    dict(type='Resize', scale=(640, 480), keep_ratio=True),
+    dict(type='Resize', scale=(480, 480), keep_ratio=False),
     dict(type='LoadAnnotations', reduce_zero_label=False),
     dict(type='PackSegInputs')
 ]
@@ -267,19 +267,19 @@ model = dict(
                         eps=1.0)
                 ]),
             sampler=dict(type='mmdet_custom.MaskPseudoSampler'))),
-    auxiliary_head=dict(
-        type='FCNHead',
-        in_channels=768,
-        in_index=0,
-        channels=256,
-        num_convs=1,
-        concat_input=False,
-        dropout_ratio=0.1,
-        num_classes=num_classes,
-        norm_cfg=dict(type='SyncBN', requires_grad=True),
-        align_corners=False,
-        loss_decode=dict(
-            type='CrossEntropyLoss', use_sigmoid=False, loss_weight=0.4)),
+    # auxiliary_head=dict(
+    #     type='FCNHead',
+    #     in_channels=768,
+    #     in_index=0,
+    #     channels=256,
+    #     num_convs=1,
+    #     concat_input=False,
+    #     dropout_ratio=0.1,
+    #     num_classes=num_classes,
+    #     norm_cfg=dict(type='SyncBN', requires_grad=True),
+    #     align_corners=False,
+    #     loss_decode=dict(
+    #         type='CrossEntropyLoss', use_sigmoid=False, loss_weight=0.4)),
     train_cfg=dict(),
     test_cfg=dict(mode='slide', crop_size=crop_size, stride=(320, 320))) #h,w
 
@@ -290,7 +290,7 @@ optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
     constructor='LayerDecayOptimizerConstructor',
-    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.8, x_encoder_num_layers=12),
+    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.80, x_encoder_num_layers=12),
     clip_grad=dict(max_norm=5.0))
 
 # learning policy

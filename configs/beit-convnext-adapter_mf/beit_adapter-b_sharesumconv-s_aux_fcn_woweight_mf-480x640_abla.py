@@ -290,7 +290,7 @@ optim_wrapper = dict(
     type='OptimWrapper',
     optimizer=optimizer,
     constructor='LayerDecayOptimizerConstructor',
-    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.8, x_encoder_num_layers=12),
+    paramwise_cfg=dict(vit_num_layers=12, decay_rate=0.85, x_encoder_num_layers=12),
     clip_grad=dict(max_norm=5.0))
 
 # learning policy
