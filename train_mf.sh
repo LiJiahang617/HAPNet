@@ -1,2 +1,1 @@
-python tools/train.py configs/beit-convnext-adapter_mf/beit_adapter-b_sharesumconv-s_aux_fcn_woweight_mf-480x640.py
-python tools/train.py configs/beit-convnext-adapter_mf/beit_adapter-b_sharesumconv-s_aux_fcn_woweight_mf-480x640.py
+python tools/train.py path-to-config.py

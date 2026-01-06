@@ -321,7 +321,7 @@ env_cfg = dict(
     dist_cfg=dict(backend='nccl'),
 )
 vis_backends = [dict(type='LocalVisBackend'),
-                dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-NYUdepth", name="0-1_beit-adapter-b_share_sum_convnext-s_enhance_data_layer_decay_constructor_090_lr2e-5")),
+                dict(type='WandbVisBackend', init_kwargs=dict(project="ECCV-NYUdepth", name="0-1_beit-adapter-b_share_sum_convnext-s")),
 ]
 visualizer = dict(
     type='SegLocalVisualizer', vis_backends=vis_backends, name='visualizer')

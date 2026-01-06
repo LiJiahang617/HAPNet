@@ -1,5 +1,5 @@
 python tools/analysis_tools/get_multimodal_params.py \
-/media/ljh/data/Cityscapes/images/test/munich_000333_000019_leftImg8bit.png \
-/media/ljh/data/Cityscapes/sne/test/munich_000333_000019_normal.png \
+path-to-image.png \
+path-to-normal.png \
 configs/mit_mlp/mm0-255_mit-b0_allmlp_cityscapes-512x1024_norm.py \
-work_dirs/mm0-255_mit-b0_allmlp_cityscapes-512x1024_norm/best_mIoU_iter_85000.pth
+path-to-checkpoint.pth
